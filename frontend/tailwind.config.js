@@ -68,5 +68,6 @@ export default {
       },
     },
   },
+  safelist: ['shadow-rail', 'shadow-tile', 'shadow-tile-hover', 'shadow-pop'],
   plugins: [],
 }
