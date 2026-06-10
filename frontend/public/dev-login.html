@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Jobpls dev login</title>
+</head>
+<body>
+  <p id="msg">Signing in…</p>
+  <script>
+    const token = new URLSearchParams(location.search).get('token')
+    if (!token) {
+      document.getElementById('msg').textContent = 'Missing ?token= query parameter.'
+    } else {
+      localStorage.setItem('jobpls_token', token)
+      location.replace('/')
+    }
+  </script>
+</body>
+</html>

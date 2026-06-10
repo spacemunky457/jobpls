@@ -1,0 +1,46 @@
+# --- Secrets & local data (NEVER commit) ---
+# SQLite DB holds user data incl. SMTP app password + API keys
+*.db
+*.db.*
+*.sqlite
+*.sqlite3
+*.bak
+# Env files (keep the example template)
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# --- Node / frontend ---
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+
+# --- Playwright ---
+test-results/
+playwright-report/
+.cache/ms-playwright/
+
+# --- Logs / tmp ---
+*.log
+tmp/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# --- Claude Code local settings (personal) ---
+.claude/settings.local.json

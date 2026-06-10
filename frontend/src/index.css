@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-white text-ink antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+@layer components {
+  .input {
+    @apply w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink placeholder-ink-muted shadow-rail transition-shadow focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-500/15;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-sm font-medium text-ink shadow-rail transition-all hover:border-ink/15 hover:shadow-tile active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-brand-600 bg-brand-600 px-3 py-2 text-sm font-medium text-white shadow-tile transition-all hover:bg-brand-700 hover:shadow-tile-hover active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50;
+  }
+  .card {
+    @apply rounded-2xl bg-surface p-4 shadow-tile ring-1 ring-ink/5;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium text-ink-muted;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+  /* Compact vertical tile: a portrait card whose footer pins to the bottom. */
+  .tile {
+    @apply flex flex-col rounded-2xl bg-surface p-3.5 text-left shadow-tile ring-1 ring-ink/5 transition-all;
+  }
+  .tile-interactive {
+    @apply cursor-pointer hover:-translate-y-0.5 hover:shadow-tile-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500;
+  }
+}
+
+:focus-visible {
+  @apply outline-none;
+}
+
+::-webkit-scrollbar {
+  @apply h-1.5 w-1.5;
+}
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-line;
+}

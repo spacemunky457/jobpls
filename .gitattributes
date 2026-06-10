@@ -1,0 +1,9 @@
+# Normalize line endings so the repo is clean across Windows + Linux.
+* text=auto
+*.ps1 text eol=crlf
+*.sh  text eol=lf
+# Treat these as binary (no eol munging)
+*.db binary
+*.pdf binary
+*.png binary
+*.jpg binary
