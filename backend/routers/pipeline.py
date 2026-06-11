@@ -63,15 +63,14 @@ def discovery_impl(db: Session, user_id: str) -> int:
         "jsearch_key": config.get("JSEARCH_API_KEY", ""),
     }
     new_jobs, new_keys = disc.run_discovery(sources, keywords, seen_keys, secrets)
-    # Country filter: keep jobs whose location mentions an allowed term. Jobs with
+    # Country ban list: drop jobs whose location mentions a banned term. Jobs with
     # no location are kept (can't judge them here; match assessment handles
     # eligibility). All fetched keys are still marked seen so skips don't recur.
-    countries = [c.strip().lower() for c in config.get("COUNTRY_FILTER", "").split(",") if c.strip()]
-    if countries:
+    banned = [c.strip().lower() for c in config.get("COUNTRY_BLOCKLIST", "").split(",") if c.strip()]
+    if banned:
         new_jobs = [
             j for j in new_jobs
-            if not (j.get("location") or "").strip()
-            or any(c in (j.get("location") or "").lower() for c in countries)
+            if not any(c in (j.get("location") or "").lower() for c in banned)
         ]
     for j in new_jobs:
         db.add(Job(

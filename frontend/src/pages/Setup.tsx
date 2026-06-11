@@ -467,7 +467,7 @@ function StepSources() {
   const saveFilters = useMutation({
     mutationFn: () => saveConfig({
       KEYWORDS: keywords ?? cfg?.KEYWORDS ?? '',
-      COUNTRY_FILTER: countries ?? cfg?.COUNTRY_FILTER ?? '',
+      COUNTRY_BLOCKLIST: countries ?? cfg?.COUNTRY_BLOCKLIST ?? '',
       ELIGIBLE_TYPES: eligTypes ?? cfg?.ELIGIBLE_TYPES ?? 'global,emea,contractor',
       BLOCKLIST_COMPANIES: blocklist ?? cfg?.BLOCKLIST_COMPANIES ?? '',
     }),
@@ -518,10 +518,10 @@ function StepSources() {
           <Textarea className="h-20" value={keywords ?? cfg?.KEYWORDS ?? ''} onChange={(e) => setKeywords(e.target.value)} />
         </Field>
         <Field
-          label="Countries / locations"
-          hint="Comma-separated. If set, only jobs whose location mentions one of these are ingested (jobs with no stated location are kept). Tip: include 'remote' to keep remote listings. Leave blank for everywhere."
+          label="Banned countries / locations"
+          hint="Comma-separated. Jobs whose location mentions one of these are skipped at discovery (jobs with no stated location are kept). Leave blank to ingest from everywhere."
         >
-          <Input value={countries ?? cfg?.COUNTRY_FILTER ?? ''} onChange={(e) => setCountries(e.target.value)} placeholder="e.g. turkey, remote, europe, emea" />
+          <Input value={countries ?? cfg?.COUNTRY_BLOCKLIST ?? ''} onChange={(e) => setCountries(e.target.value)} placeholder="e.g. usa, united states, canada, india" />
         </Field>
         <Field label="Eligible location types" hint="Only jobs matching these are flagged eligible for you.">
           <div className="flex flex-wrap gap-1.5">
