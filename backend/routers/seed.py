@@ -5,9 +5,11 @@ from sqlalchemy.orm import Session
 from models import ApplicantProfile, Config, Source, TailoringProfile
 
 DEFAULT_CONFIG = {
-    "AI_PROVIDER": "ollama_browser",  # ollama_browser | claude_byok | claude_managed
+    "AI_PROVIDER": "ollama_browser",  # ollama_browser | gemini_byok | claude_byok | claude_managed | ollama_server
     "OLLAMA_MODEL": "llama3.2",
     "OLLAMA_BASE_URL": "http://localhost:11434",
+    "GEMINI_API_KEY": "",
+    "GEMINI_MODEL": "gemini-2.5-flash",
     "CLAUDE_API_KEY": "",
     "CLAUDE_MODEL": "claude-haiku-4-5-20251001",
     "MIN_SCORE": "60",
@@ -32,6 +34,12 @@ DEFAULT_CONFIG = {
     "RESEND_API_KEY": "",
     "DIGEST_ENABLED": "false",    # email me new matches on a schedule
     "DIGEST_MIN_TIER": "possible",  # strong | possible | stretch | skip
+    # Automation (the RUN AUTOMATION loop: discover -> assess -> expire -> digest):
+    "AUTOMATION_ENABLED": "false",
+    "AUTOMATION_INTERVAL_HOURS": "6",
+    "DIGEST_MODE": "after_run",   # after_run (only when new matches) | daily
+    "DIGEST_TIME": "09:00",       # used by daily mode (UTC, HH:MM)
+    "JOB_EXPIRY_DAYS": "21",      # unactioned postings older than this auto-pass
     # Discovery breadth (keyed sources only run when a key is present):
     "JOB_LOCATION": "",           # default location for linkedin/adzuna/jsearch
     "ADZUNA_APP_ID": "",

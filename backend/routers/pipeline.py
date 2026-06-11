@@ -28,6 +28,12 @@ def get_provider(config: dict):
             model=config.get("OLLAMA_MODEL", "llama3.2"),
             base_url=config.get("OLLAMA_BASE_URL", "http://localhost:11434"),
         )
+    if provider_type == "gemini_byok":
+        from services.ai.gemini_provider import GeminiProvider
+        return GeminiProvider(
+            api_key=config.get("GEMINI_API_KEY", ""),
+            model=config.get("GEMINI_MODEL", "gemini-2.5-flash"),
+        )
     if provider_type == "claude_byok":
         from services.ai.claude_provider import ClaudeProvider
         return ClaudeProvider(api_key=config.get("CLAUDE_API_KEY", ""), model=config.get("CLAUDE_MODEL", "claude-haiku-4-5"))
@@ -36,7 +42,7 @@ def get_provider(config: dict):
         return ClaudeProvider(api_key=settings.MANAGED_CLAUDE_API_KEY, model=config.get("CLAUDE_MODEL", "claude-haiku-4-5"))
     raise ValueError(
         "This provider runs in your browser. Use the 'Run with local Ollama' buttons, "
-        "or switch to a Claude provider in Settings."
+        "or switch to Google Gemini / Claude in Setup → Matching engine."
     )
 
 
