@@ -15,6 +15,9 @@ DEFAULT_CONFIG = {
     "MIN_SCORE": "60",
     "SCORE_BATCH": "8",
     "KEYWORDS": "quality assurance,qa,automation,solutions engineer,customer success,implementation,ai automation,cx ops,support operations",
+    # If set, only ingest jobs whose location mentions one of these terms
+    # (comma-separated; jobs with no location are kept). e.g. "turkey,remote,europe"
+    "COUNTRY_FILTER": "",
     "PROFILE_BLURB": "",
     "JOB_PREFERENCES": "",
     "ELIGIBLE_TYPES": "global,emea,contractor",

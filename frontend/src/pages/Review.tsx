@@ -356,7 +356,7 @@ function Grid({ jobs, isLoading }: { jobs: Job[]; isLoading: boolean }) {
     const filtered = jobs.filter((j) => {
       // Passed jobs are hidden unless explicitly filtered for (the recovery path).
       if (!statusFilter && j.status === 'passed') return false
-      if (q && !`${j.company} ${j.title}`.toLowerCase().includes(q)) return false
+      if (q && !`${j.company} ${j.title} ${j.location}`.toLowerCase().includes(q)) return false
       if (statusFilter && j.status !== statusFilter) return false
       if (tierFilter.length && !tierFilter.includes(j.tier ?? '')) return false
       if (eligFilter.length && !eligFilter.includes(j.eligibility ?? '')) return false
@@ -385,7 +385,7 @@ function Grid({ jobs, isLoading }: { jobs: Job[]; isLoading: boolean }) {
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
             <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search company or title…" className="pl-8" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search company, title or country…" className="pl-8" />
           </div>
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-auto">
             <option value="">All statuses</option>
