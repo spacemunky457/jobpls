@@ -28,7 +28,19 @@ export const STATUS_CLASS: Record<string, string> = {
   assessed: 'bg-surface-muted text-ink-muted border border-line',
   drafted: 'bg-purple-50 text-purple-800 border border-purple-200',
   applied: 'bg-green-50 text-green-800 border border-green-200',
+  passed: 'bg-surface-muted text-ink-muted/70 border border-line',
   error: 'bg-red-50 text-red-800 border border-red-200',
+}
+
+// UI stage names over the DB statuses (DB rename deferred to the Alembic pass):
+// new→Found, assessed→Matched, approved→Shortlisted, drafted→Ready, applied→Sent.
+export const STAGE_LABEL: Record<string, string> = {
+  new: 'Found',
+  assessed: 'Matched',
+  approved: 'Shortlisted',
+  drafted: 'Ready',
+  applied: 'Sent',
+  passed: 'Passed',
 }
 
 export const REQUEST_TYPE_LABEL: Record<string, string> = {
