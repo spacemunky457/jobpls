@@ -141,6 +141,24 @@ class ApplyAttempt(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Run(Base):
+    """One automation/manual pipeline cycle (discover -> assess -> expire -> digest),
+    persisted so the UI can poll progress and show 'last run' on the automation tile."""
+    __tablename__ = "runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, index=True)
+    kind = Column(String, default="manual")    # manual | auto
+    phase = Column(String, default="queued")   # queued|discovering|assessing|expiring|digesting|done|error
+    found = Column(Integer, default=0)
+    assessed = Column(Integer, default=0)
+    expired = Column(Integer, default=0)
+    digest_sent = Column(Integer, default=0)
+    error = Column(Text, default="")
+    started_at = Column(DateTime, default=datetime.utcnow, index=True)
+    finished_at = Column(DateTime, nullable=True)
+
+
 class InputRequest(Base):
     __tablename__ = "input_requests"
 

@@ -22,25 +22,35 @@ def parse_json_loose(text: str) -> Optional[dict]:
         return None
 
 
-# --- Candidate match ---
+# --- Candidate match (prompt v2: calibration rubric + evidence-backed strengths) ---
 def build_match_prompt(profile: str, cv_text: str, preferences: str, eligible_types: str, job: dict) -> str:
     return (
-        "You assess how strong a CANDIDATE is for a job, based on their CV and profile. "
-        "Judge the candidate's competitiveness for THIS specific role — skills, experience, "
-        "and seniority overlap with the requirements. Output ONLY valid JSON with these keys:\n"
+        "You are an experienced technical recruiter assessing how strong a CANDIDATE is for a job, "
+        "based on their CV and profile. Judge the candidate's competitiveness for THIS specific role — "
+        "skills, experience, and seniority overlap with the requirements. Be calibrated, not generous: "
+        "most jobs are NOT a strong match for any given candidate. Output ONLY valid JSON with these keys:\n"
         "  match (0-100 integer: how well the candidate's CV matches this role's requirements),\n"
         "  tier (one of: strong, possible, stretch, skip),\n"
         "  eligibility (one of: global, emea, contractor, us-only, needs-right-to-work, unclear),\n"
         "  verdict (one sentence on the candidate's fit for this role),\n"
         "  strengths (array of short phrases: what the candidate brings that fits this role),\n"
         "  gaps (array of short phrases: requirements the candidate is missing or weak on).\n\n"
-        "TIER GUIDE: strong = clearly qualified, should apply; possible = solid partial fit, worth a shot;\n"
-        "  stretch = reach, missing some key requirements; skip = poor fit or a hard blocker.\n\n"
+        "TIER CALIBRATION RUBRIC:\n"
+        "  strong  = meets ~80%+ of the must-have requirements at the right seniority; would likely\n"
+        "            get an interview. Reserve this for genuinely competitive applications.\n"
+        "  possible = meets most core requirements with 1-2 real gaps; a sensible application.\n"
+        "  stretch = meaningful overlap but missing several key requirements, or a seniority mismatch.\n"
+        "  skip    = wrong field, hard eligibility blocker, or under ~30% requirement overlap.\n\n"
+        "EVIDENCE RULE: every item in strengths must be backed by something concrete in the CV or "
+        "profile (cite it briefly, e.g. \"5y test automation — QA lead role\"). Never invent or "
+        "embellish experience. If the CV doesn't show it, it belongs in gaps, not strengths.\n\n"
         "ELIGIBILITY RULES — candidate is based in TURKEY with no EU/US work rights:\n"
         "  global = accepts anyone worldwide; emea = EMEA-wide remote; contractor = contractor/EOR/B2B ok;\n"
         "  us-only = US/North America only; needs-right-to-work = requires existing right to work;\n"
-        "  unclear = not specified.\n"
-        f"Treat the role as eligible only if the type is in: {eligible_types or 'global,emea,contractor'}\n\n"
+        "  unclear = not specified. Look for location restrictions anywhere in the posting (benefits,\n"
+        "  legal boilerplate, timezone requirements), not just the location field.\n"
+        f"Treat the role as eligible only if the type is in: {eligible_types or 'global,emea,contractor'}\n"
+        "A hard eligibility blocker caps the tier at skip regardless of skills overlap.\n\n"
         "CANDIDATE PROFILE:\n" + (profile or "(none)") + "\n\n"
         + ("CANDIDATE CV:\n" + cv_text[:3000] + "\n\n" if cv_text else "")
         + ("CANDIDATE PREFERENCES / NUANCES:\n" + preferences + "\n\n" if preferences else "")
@@ -82,10 +92,15 @@ def build_tailor_prompt(
     opt_line = _options_line(options or {})
     return (
         "Tailor a concise ATS-friendly CV for the job below, using ONLY facts from the candidate material "
-        "(never invent employers, tools, or numbers). Mirror the job's wording where truthful. "
-        "Then write a short cover email (max 130 words). "
+        "(never invent employers, tools, dates, or numbers — if the CV provides a metric, keep it; "
+        "if it doesn't, don't fabricate one). Mirror the job description's key terms where truthful, "
+        "and lead each role's bullets with the experience most relevant to THIS job. "
+        "Then write a short cover email (max 130 words) that names one specific reason this candidate "
+        "fits this role — no generic enthusiasm. "
         + (opt_line + " " if opt_line else "")
-        + "\nFORMATTING: plain text only. Separate sections with a real blank line. "
+        + "\nATS FORMATTING RULES: plain text only — no tables, columns, emojis, or special symbols. "
+        "Use standard section headers (Summary, Experience, Skills, Education). "
+        "Separate sections with a real blank line. "
         "Keep each skill/tool list comma-separated on one line (not one item per line). "
         "Do NOT output literal backslash-n; use actual line breaks inside the JSON string values.\n"
         + "Return ONLY valid JSON: {\"cv\": \"plain text CV\", \"email\": \"plain text email\"}.\n\n"

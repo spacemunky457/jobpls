@@ -201,6 +201,23 @@ class ApplyBatchResult(BaseModel):
     results: list[ApplyResult] = []
 
 
+# --- Automation runs ---
+class RunOut(BaseModel):
+    id: int
+    kind: str
+    phase: str
+    found: int
+    assessed: int
+    expired: int
+    digest_sent: int
+    error: str
+    started_at: datetime
+    finished_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
 # --- Pipeline / browser-driven AI ---
 class PipelineResult(BaseModel):
     success: bool

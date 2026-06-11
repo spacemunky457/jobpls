@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import Base, engine
-from routers import applicant, apply as apply_router, auth, config as config_router, cv, jobs, pipeline, requests, sources, tailoring_profiles
+from routers import applicant, apply as apply_router, auth, automation as automation_router, config as config_router, cv, jobs, pipeline, requests, setup as setup_router, sources, tailoring_profiles
 from services.scheduler import start_scheduler, stop_scheduler
 from settings import settings
 
@@ -41,6 +41,8 @@ app.include_router(tailoring_profiles.router)
 app.include_router(requests.router)
 app.include_router(applicant.router)
 app.include_router(apply_router.router)
+app.include_router(setup_router.router)
+app.include_router(automation_router.router)
 
 
 @app.get("/health")

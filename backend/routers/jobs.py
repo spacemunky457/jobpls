@@ -53,6 +53,9 @@ def get_stats(db: Session = Depends(get_db), current_user: User = Depends(get_cu
         "approved": base.filter(Job.approved == True).count(),
         "drafted": base.filter(Job.status == "drafted").count(),
         "applied": base.filter(Job.status == "applied").count(),
+        "passed": base.filter(Job.status == "passed").count(),
+        # Human queue: assessed but neither shortlisted nor passed.
+        "to_review": base.filter(Job.status == "assessed", Job.approved == False).count(),
     }
 
 

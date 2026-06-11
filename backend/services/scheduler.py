@@ -1,15 +1,21 @@
-"""Multi-user scheduler. One discovery tick + one match-assessment tick at a system-wide
-cadence (from settings); each tick loops over all users, honoring their SCHEDULER_ENABLED
-and running only the AI paths that work server-side (Claude / self-hosted Ollama).
-Browser-Ollama users assess/tailor from the UI, so the tick skips their assessment."""
+"""Per-user automation scheduler. One master tick every 15 minutes checks which
+users are due (AUTOMATION_ENABLED + their own AUTOMATION_INTERVAL_HOURS elapsed
+since their last auto run) and launches a full cycle for each:
+discover -> assess (server-side providers) -> expire -> digest.
+
+Browser-Ollama users still get discovery/expiry/digest on schedule; the assess
+phase is skipped for them (they assess from the UI) — the automation tile in the
+app nudges them toward Gemini for fully hands-free runs."""
 
 import logging
 from datetime import datetime, timedelta, timezone
+
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from settings import settings
 
 log = logging.getLogger(__name__)
+
+TICK_MINUTES = 15
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -26,34 +32,17 @@ def start_scheduler():
     if s.running:
         return
     s.start()
-    # Timezone-AWARE UTC: the scheduler runs in UTC, so a naive local time would be
-    # mis-read as UTC and push the first run hours into the future (UTC-offset bug).
+    # Timezone-AWARE UTC + coalesce + generous misfire grace: laptop-friendly —
+    # if the machine sleeps through ticks, one fires on wake instead of being
+    # silently skipped, and a fresh check runs shortly after every startup.
     now = datetime.now(timezone.utc)
-    # coalesce + a generous misfire_grace_time make a laptop-friendly agent: if the
-    # machine sleeps through a tick, the job fires once when it wakes (instead of being
-    # silently skipped). next_run_time runs a fresh check ~soon after every startup, so
-    # booting/logging in triggers discovery + a (deduped) digest.
     s.add_job(
-        _discovery_tick, IntervalTrigger(hours=settings.DISCOVERY_INTERVAL_HOURS),
-        id="discovery", replace_existing=True, coalesce=True,
-        misfire_grace_time=int(settings.DISCOVERY_INTERVAL_HOURS * 3600),
-        next_run_time=now + timedelta(seconds=30),
+        _automation_tick, IntervalTrigger(minutes=TICK_MINUTES),
+        id="automation", replace_existing=True, coalesce=True,
+        misfire_grace_time=TICK_MINUTES * 60,
+        next_run_time=now + timedelta(seconds=60),
     )
-    s.add_job(
-        _assess_tick, IntervalTrigger(minutes=settings.SCORING_INTERVAL_MINUTES),
-        id="assess", replace_existing=True, coalesce=True,
-        misfire_grace_time=int(settings.SCORING_INTERVAL_MINUTES * 60),
-    )
-    s.add_job(
-        _digest_tick, IntervalTrigger(hours=settings.DIGEST_INTERVAL_HOURS),
-        id="digest", replace_existing=True, coalesce=True,
-        misfire_grace_time=int(settings.DIGEST_INTERVAL_HOURS * 3600),
-        next_run_time=now + timedelta(seconds=120),
-    )
-    log.info(
-        "APScheduler started (discovery %sh, assess %smin, digest %sh; catch-up on wake/boot)",
-        settings.DISCOVERY_INTERVAL_HOURS, settings.SCORING_INTERVAL_MINUTES, settings.DIGEST_INTERVAL_HOURS,
-    )
+    log.info("APScheduler started (automation tick every %dmin; per-user intervals)", TICK_MINUTES)
 
 
 def stop_scheduler():
@@ -63,82 +52,41 @@ def stop_scheduler():
         log.info("APScheduler stopped")
 
 
-def _enabled_users(db):
-    from models import Config, User
-    users = db.query(User).all()
-    result = []
-    for u in users:
-        row = db.query(Config).filter(Config.user_id == u.id, Config.key == "SCHEDULER_ENABLED").first()
-        if row is None or str(row.value).lower() == "true":
-            result.append(u)
-    return result
-
-
-def _discovery_tick():
+def _automation_tick():
+    """Find due users and run their cycles sequentially on this worker thread."""
     try:
         from database import SessionLocal
-        from routers.pipeline import discovery_impl
-        db = SessionLocal()
-        try:
-            for user in _enabled_users(db):
-                try:
-                    discovery_impl(db, user.id)
-                except Exception as e:
-                    log.error("Discovery failed for user %s: %s", user.id, e)
-        finally:
-            db.close()
-    except Exception as e:
-        log.error("Discovery tick failed: %s", e)
-
-
-def _digest_tick():
-    """Email each opted-in user a job-alert digest of new matches since the last run."""
-    try:
-        from database import SessionLocal
+        from models import Run, User
         from routers.config import get_config_dict
-        from services import notify
+        from services import automation
+
         db = SessionLocal()
         try:
-            window = int(settings.DIGEST_INTERVAL_HOURS) + 1
-            for user in _enabled_users(db):
+            due: list[str] = []
+            for user in db.query(User).all():
                 config = get_config_dict(db, user.id)
-                if str(config.get("DIGEST_ENABLED", "false")).lower() != "true":
+                if config.get("AUTOMATION_ENABLED", "false") != "true":
+                    continue
+                if automation.is_running(db, user.id):
                     continue
                 try:
-                    n = notify.send_digest(db, user, config, since_hours=window, mark=True)
-                    if n:
-                        log.info("Digest sent to %s (%d jobs)", notify.recipient_for(user, config), n)
-                except Exception as e:
-                    log.error("Digest failed for user %s: %s", user.id, e)
-        finally:
-            db.close()
-    except Exception as e:
-        log.error("Digest tick failed: %s", e)
-
-
-def _assess_tick():
-    try:
-        from database import SessionLocal
-        from routers.config import get_config_dict
-        from routers.cv import get_default_cv_text
-        from routers.pipeline import get_provider
-        from services import matching as mt
-        db = SessionLocal()
-        try:
-            for user in _enabled_users(db):
-                config = get_config_dict(db, user.id)
-                if config.get("AI_PROVIDER", "ollama_browser").lower() == "ollama_browser":
-                    continue  # browser users assess from the UI
-                try:
-                    provider = get_provider(config)
-                except Exception:
+                    interval = float(config.get("AUTOMATION_INTERVAL_HOURS", "6") or 6)
+                except ValueError:
+                    interval = 6.0
+                last = automation.latest_run(db, user.id, kind="auto")
+                if last and last.started_at > datetime.utcnow() - timedelta(hours=interval):
                     continue
-                cv_text = get_default_cv_text(db, user.id)
-                try:
-                    mt.match_batch(db, provider, user.id, config, cv_text, int(config.get("SCORE_BATCH", "8")))
-                except Exception as e:
-                    log.error("Match assessment failed for user %s: %s", user.id, e)
+                due.append(user.id)
+
+            for user_id in due:
+                run = Run(user_id=user_id, kind="auto", phase="queued")
+                db.add(run)
+                db.commit()
+                db.refresh(run)
+                # Run inline (we're already on a scheduler worker thread) so cycles
+                # for multiple users execute sequentially, not in a thread herd.
+                automation.run_cycle(user_id, run.id)
         finally:
             db.close()
     except Exception as e:
-        log.error("Assessment tick failed: %s", e)
+        log.error("Automation tick failed: %s", e)
