@@ -3,7 +3,11 @@
 @tailwind utilities;
 
 body {
-  @apply bg-white text-ink antialiased;
+  /* The floating-canvas backdrop: quiet muted surface with a soft brand wash.
+     The app itself lives in a centered canvas tile (see MainFlowShell). */
+  @apply bg-surface-muted text-ink antialiased;
+  background-image: radial-gradient(1100px 520px at 50% -120px, rgba(14, 165, 233, 0.09), transparent 70%);
+  background-attachment: fixed;
   font-feature-settings: 'cv11', 'ss01';
 }
 
@@ -35,6 +39,17 @@ body {
   }
   .tile-interactive {
     @apply cursor-pointer hover:-translate-y-0.5 hover:shadow-tile-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500;
+  }
+  /* Wizard choice-tile: a selectable tile with radio semantics. */
+  .choice-tile {
+    @apply tile cursor-pointer items-start gap-1 transition-all hover:-translate-y-0.5 hover:shadow-tile-hover;
+  }
+  .choice-tile-active {
+    @apply ring-2 ring-brand-500 shadow-tile-hover;
+  }
+  /* Nudge tile: dashed placeholder pointing at an incomplete setup step. */
+  .tile-dashed {
+    @apply flex flex-col rounded-2xl border-2 border-dashed border-line bg-transparent p-3.5 text-left shadow-none transition-colors hover:border-brand-300 hover:bg-brand-50/30;
   }
 }
 

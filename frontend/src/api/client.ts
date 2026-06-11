@@ -30,7 +30,35 @@ export interface Job {
   status: string; approved: boolean; added_at: string
 }
 export interface Source { id: number; type: string; query: string; enabled: boolean }
-export interface Stats { total: number; new: number; assessed: number; approved: number; drafted: number; applied: number }
+export interface Stats {
+  total: number; new: number; assessed: number; approved: number; drafted: number; applied: number
+  passed: number; to_review: number
+}
+export interface SetupArea { complete: boolean; summary: string }
+export interface SetupState {
+  areas: Record<'you' | 'cv' | 'engine' | 'sources' | 'automation', SetupArea>
+  usable: boolean
+  ai_server: boolean
+  email_ready: boolean
+  email_summary: string
+  cv_ready: boolean
+}
+export interface Run {
+  id: number; kind: string; phase: string
+  found: number; assessed: number; expired: number; digest_sent: number
+  error: string; started_at: string; finished_at: string | null
+}
+export interface AutomationState {
+  enabled: boolean
+  interval_hours: number
+  digest_mode: string
+  digest_time: string
+  digest_min_tier: string
+  running: boolean
+  next_run_at: string | null
+  last_run: Run | null
+  ready: { ai_server: boolean; ai_summary: string; email: boolean; email_summary: string; cv: boolean }
+}
 export interface PipelineResult { success: boolean; message: string; count: number }
 export interface Application { id: number; job_id: number; cv_text: string; email_draft: string; applied_at: string; notes: string }
 export interface MasterCV { id: number; name: string; content: string; is_default: boolean; updated_at: string }
@@ -140,6 +168,19 @@ export const applyJob = (jobId: number, opts?: { headless?: boolean; autosubmit?
 export const applyBatch = () => api.post<ApplyBatchResult>('/apply/batch').then((r) => r.data)
 export const fetchApplyAttempts = (jobId: number) =>
   api.get<ApplyResult[]>(`/apply/${jobId}/attempts`).then((r) => r.data)
+
+// --- Setup wizard ---
+export const fetchSetupState = () => api.get<SetupState>('/setup/state').then((r) => r.data)
+export const testAIKey = (provider: string, api_key: string, model: string) =>
+  api.post<{ ok: boolean; message: string }>('/setup/test-ai', { provider, api_key, model }).then((r) => r.data)
+
+// --- Automation ---
+export const fetchAutomation = () => api.get<AutomationState>('/automation').then((r) => r.data)
+export const updateAutomation = (body: Partial<{
+  enabled: boolean; interval_hours: number; digest_mode: string; digest_time: string; digest_min_tier: string
+}>) => api.put<AutomationState>('/automation', body).then((r) => r.data)
+export const runAutomationNow = () => api.post<{ run_id: number }>('/automation/run-now').then((r) => r.data)
+export const fetchRun = (id: number) => api.get<Run>(`/automation/runs/${id}`).then((r) => r.data)
 
 // --- Requests (human-in-the-loop) ---
 export const fetchRequests = () => api.get<InputRequest[]>('/requests').then((r) => r.data)

@@ -3,29 +3,28 @@ import { cn } from '../../lib/cn'
 import type { Stats } from '../../api/client'
 
 const STEPS = [
-  { to: '/', label: 'Overview', end: true, statKey: 'total' as const, hint: 'Discover & summary' },
-  { to: '/inbox', label: 'Review', end: false, statKey: 'new' as const, hint: 'Assess & approve' },
-  { to: '/applications', label: 'Prepare', end: false, statKey: 'approved' as const, hint: 'Tailor drafts' },
-  { to: '/tracker', label: 'Track', end: false, statKey: 'applied' as const, hint: 'Sent applications' },
+  { to: '/', label: 'Home', end: true, hint: 'Status & automation' },
+  { to: '/review', label: 'Review', end: false, hint: 'Decide on matches' },
+  { to: '/apply', label: 'Apply', end: false, hint: 'Tailor & send' },
 ]
 
 interface PipelineStepperProps {
   stats?: Stats
 }
 
-function stepStat(statKey: typeof STEPS[number]['statKey'], stats: Stats) {
-  switch (statKey) {
-    case 'total': return `${stats.new} new`
-    case 'new': return `${stats.assessed} assessed`
-    case 'approved': return `${stats.drafted} drafted`
-    case 'applied': return `${stats.applied} applied`
+function stepStat(to: string, stats: Stats) {
+  switch (to) {
+    case '/': return `${stats.new} found · ${stats.to_review} to review`
+    case '/review': return `${stats.to_review} waiting`
+    case '/apply': return `${stats.approved} shortlisted · ${stats.applied} sent`
+    default: return ''
   }
 }
 
 export function PipelineStepper({ stats }: PipelineStepperProps) {
   return (
     <nav className="shrink-0 border-b border-line bg-white">
-      <div className="mx-auto w-full max-w-7xl overflow-x-auto px-3 py-2 sm:px-6">
+      <div className="w-full overflow-x-auto px-3 py-2 sm:px-6">
         <div className="flex min-w-max items-stretch gap-1 rounded-2xl bg-surface-muted p-1">
           {STEPS.map((step, i) => (
             <NavLink
@@ -54,7 +53,7 @@ export function PipelineStepper({ stats }: PipelineStepperProps) {
                       {step.label}
                     </span>
                     <span className={cn('block text-[11px] leading-tight', isActive ? 'text-brand-600' : 'text-ink-muted/80')}>
-                      {stats ? stepStat(step.statKey, stats) : step.hint}
+                      {stats ? stepStat(step.to, stats) : step.hint}
                     </span>
                   </span>
                 </div>
