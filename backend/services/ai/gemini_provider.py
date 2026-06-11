@@ -20,10 +20,13 @@ DEFAULT_RPM = 10
 
 class GeminiProvider(AIProvider):
     def __init__(self, api_key: str, model: str = "gemini-2.5-flash", rpm: int = DEFAULT_RPM):
-        if not api_key:
+        # Strip whitespace/newlines that ride along with copy-paste — a key with a
+        # trailing newline is silently ignored by Google and yields a confusing
+        # "Expected OAuth 2 access token" 401 instead of "invalid key".
+        self.api_key = (api_key or "").strip()
+        if not self.api_key:
             raise ValueError("Gemini API key is required — add it in Setup → Matching engine.")
-        self.api_key = api_key
-        self.model = model or "gemini-2.5-flash"
+        self.model = (model or "gemini-2.5-flash").strip()
         self.min_interval = 60.0 / max(1, rpm)
         self._lock = threading.Lock()
         self._last_call = 0.0
@@ -53,7 +56,14 @@ class GeminiProvider(AIProvider):
         last_err = "unknown error"
         for attempt in range(4):
             self._throttle()
-            resp = requests.post(url, params={"key": self.api_key}, json=body, timeout=120)
+            # The key goes in the x-goog-api-key header (Google's documented method);
+            # the ?key= query param is legacy and rejects some newer AI Studio keys.
+            resp = requests.post(
+                url,
+                headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
+                json=body,
+                timeout=120,
+            )
             if resp.status_code == 429:
                 delay = min(60.0, 5.0 * (2 ** attempt))
                 log.warning("Gemini rate-limited (429); retrying in %.0fs", delay)
@@ -65,6 +75,11 @@ class GeminiProvider(AIProvider):
                     detail = resp.json().get("error", {}).get("message", resp.text[:200])
                 except Exception:
                     detail = resp.text[:200]
+                if resp.status_code in (401, 403):
+                    detail += (
+                        " — make sure you pasted an API key from aistudio.google.com/apikey"
+                        " (it starts with 'AIza'), not an OAuth client ID or service-account file."
+                    )
                 raise RuntimeError(f"Gemini API error {resp.status_code}: {detail}")
             data = resp.json()
             candidates = data.get("candidates") or []
