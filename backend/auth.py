@@ -61,15 +61,29 @@ def create_access_token(user: User) -> str:
 def _decode_token(token: str) -> dict:
     """Verify a JWT according to AUTH_MODE and return its claims."""
     if settings.AUTH_MODE == "supabase":
+        # Try JWKS first (ES256/RS256 — newer Supabase projects)
         if settings.SUPABASE_JWKS_URL:
-            client = _jwk_clients.get(settings.SUPABASE_JWKS_URL)
-            if client is None:
-                client = jwt.PyJWKClient(settings.SUPABASE_JWKS_URL)
-                _jwk_clients[settings.SUPABASE_JWKS_URL] = client
-            signing_key = client.get_signing_key_from_jwt(token).key
-            return jwt.decode(token, signing_key, algorithms=["RS256", "ES256"], audience="authenticated")
-        secret = settings.SUPABASE_JWT_SECRET or settings.JWT_SECRET
-        return jwt.decode(token, secret, algorithms=["HS256"], audience="authenticated")
+            try:
+                client = _jwk_clients.get(settings.SUPABASE_JWKS_URL)
+                if client is None:
+                    client = jwt.PyJWKClient(settings.SUPABASE_JWKS_URL)
+                    _jwk_clients[settings.SUPABASE_JWKS_URL] = client
+                signing_key = client.get_signing_key_from_jwt(token).key
+                claims = jwt.decode(token, signing_key, algorithms=["RS256", "ES256"], audience="authenticated")
+                log.debug("Token verified via JWKS")
+                return claims
+            except Exception as e:
+                log.warning("JWKS verification failed (%s: %s) — falling back to JWT secret", type(e).__name__, e)
+        # Fall back to HS256 JWT secret (legacy Supabase projects or explicit HS256 config)
+        if settings.SUPABASE_JWT_SECRET:
+            try:
+                claims = jwt.decode(token, settings.SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated")
+                log.debug("Token verified via JWT secret")
+                return claims
+            except jwt.PyJWTError as e:
+                log.warning("JWT secret verification failed (%s): %s", type(e).__name__, e)
+                raise
+        raise jwt.PyJWTError("No SUPABASE_JWKS_URL or SUPABASE_JWT_SECRET configured")
     # dev mode
     return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALG])
 
