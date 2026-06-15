@@ -56,4 +56,10 @@ app.include_router(automation_router.router)
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "auth_mode": settings.AUTH_MODE,
+        "jwks_url_set": bool(settings.SUPABASE_JWKS_URL),
+        "jwt_secret_set": bool(settings.SUPABASE_JWT_SECRET),
+        "db": "sqlite" if settings.is_sqlite else "postgres",
+    }

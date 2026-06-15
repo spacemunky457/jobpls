@@ -10,6 +10,7 @@ The rest of the app only depends on `get_current_user`, so swapping modes never 
 business logic.
 """
 
+import logging
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -22,6 +23,8 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import User
 from settings import settings
+
+log = logging.getLogger(__name__)
 
 bearer = HTTPBearer(auto_error=True)
 
@@ -79,7 +82,11 @@ def get_current_user(
     try:
         claims = _decode_token(creds.credentials)
     except jwt.PyJWTError as e:
+        log.warning("JWT verification failed (%s): %s", type(e).__name__, e)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}")
+    except Exception as e:
+        log.error("Unexpected auth error (%s): %s", type(e).__name__, e)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Auth error: {e}")
 
     user_id = claims.get("sub")
     if not user_id:
