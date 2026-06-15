@@ -6,6 +6,7 @@ point at Supabase Postgres + Supabase Auth without touching app code.
 
 import os
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Absolute path to backend/jobpls.db so the SQLite file is the SAME regardless of
@@ -21,6 +22,19 @@ class Settings(BaseSettings):
 
     # --- Database ---
     DATABASE_URL: str = _DEFAULT_SQLITE
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def _normalize_db_url(cls, v: str) -> str:
+        # We install psycopg2-binary (SQLAlchemy dialect: postgresql+psycopg2).
+        # Supabase connection strings often come as postgresql+psycopg:// (psycopg v3)
+        # or bare postgresql:// — normalize both so the engine never tries to import
+        # the psycopg v3 package which is not installed.
+        if v.startswith("postgresql+psycopg://"):
+            return "postgresql+psycopg2://" + v[len("postgresql+psycopg://"):]
+        if v.startswith("postgresql://"):
+            return "postgresql+psycopg2://" + v[len("postgresql://"):]
+        return v
 
     # --- Auth ---
     # dev    -> we issue/verify our own HS256 JWTs (sub = user id)
