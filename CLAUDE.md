@@ -1,6 +1,6 @@
 # Jobpls — Project Guide (CLAUDE.md)
 
-Jobpls is a job-application pipeline: **discover → match → approve → tailor → apply**, with a human in the loop at every gate. It started as a Google Apps Script + Gemini script and was rebuilt as a FastAPI + React app. It runs locally now (SQLite + dev auth + local Ollama in the browser) and is being built so it can deploy to **Render (backend) + Supabase (Postgres + Auth)** later, and become a native mobile app after that. Everything is REST + bearer-JWT so a future mobile client is a drop-in API consumer.
+Jobpls is a job-application pipeline: **discover → match → approve → tailor → apply**, with a human in the loop at every gate. It started as a Google Apps Script + Gemini script and was rebuilt as a FastAPI + React app. It runs locally (SQLite + dev auth + local Ollama) and is deployed to **Render (frontend static) + Render free tier (backend web service) + Supabase (Postgres + Auth)**. The scheduled agent runs as a **GitHub Actions cron** (every 6h, free) so it fires reliably regardless of server sleep. Everything is REST + bearer-JWT so a future mobile client is a drop-in API consumer.
 
 ## Repo layout
 
@@ -18,12 +18,18 @@ jobpls/
 │   │   ├── ai/         # base.AIProvider, ollama_provider, claude_provider
 │   │   ├── apply/      # browser-bot auto-apply: base, browser (Playwright), email_apply, dispatcher
 │   │   └── email/      # base.get_sender(config), console_sender, smtp_sender (Gmail), resend_sender
-│   ├── requirements.txt # +playwright, +fpdf2
+│   ├── requirements.txt # +playwright, +fpdf2, +psycopg2-binary, +alembic
+│   ├── alembic.ini     # Alembic config (script_location=migrations/)
+│   ├── migrations/     # Alembic migrations: env.py + versions/001_initial_schema.py
+│   ├── run_agent.py    # one-shot agent script: discover→assess→expire→digest for all AUTOMATION_ENABLED users
+│   ├── Dockerfile      # for optional container deploys
 │   ├── .env.example    # copy to .env (gitignored) to override defaults
 │   └── jobpls.db       # local SQLite — GITIGNORED (holds secrets: SMTP pw, API keys); delete to reset schema
 ├── frontend/           # Vite + React 18 + TS + Tailwind
 ├── start.ps1 / start.sh                # launch backend (8000) + frontend (5173) — Windows / Linux
 ├── agent.ps1 install-agent.ps1 uninstall-agent.ps1 open-app.ps1   # always-on alert agent (Windows Task at login)
+├── render.yaml                         # Render Blueprint: backend (web) + frontend (static)
+├── .github/workflows/agent.yml         # GitHub Actions cron (every 6h): runs backend/run_agent.py
 ├── README.md / .gitignore / .gitattributes
 └── CLAUDE.md
 ```
@@ -35,7 +41,7 @@ jobpls/
 - **Two Python installs on this machine.** `python` is 3.13 and has the backend deps; a separate 3.10 owns the bare `uvicorn` on PATH and does NOT. **Always launch the backend with `python -m uvicorn main:app --port 8000`** — a bare `uvicorn ...` fails with `ModuleNotFoundError: feedparser`. `start.ps1` already does this correctly.
 - One-liner: `./start.ps1` (Windows) or `./start.sh` (Linux/macOS) from the repo root → backend on **http://localhost:8000**, frontend on **http://localhost:5173** (Vite dev). API docs at http://localhost:8000/docs.
 - Frontend talks to the API via Vite's proxy: `/api/*` → `http://localhost:8000` (see `frontend/vite.config.ts`). The axios client base URL is `import.meta.env.VITE_API_URL || '/api'`.
-- **Schema changed?** In dev we use `Base.metadata.create_all` (no migrations yet). Adding a **new table** (e.g. `ApplicantProfile`, `ApplyAttempt`) is automatic on startup — no reset. Adding a **column to an existing table** is NOT auto-applied by SQLite create_all → delete `backend/jobpls.db` and restart (or prefer a new table). (Alembic deferred to deploy.)
+- **Schema changed?** In dev we use `Base.metadata.create_all` (auto on startup). Adding a **new table** is automatic — no reset. Adding a **column to an existing table** is NOT auto-applied by SQLite create_all → delete `backend/jobpls.db` and restart (or prefer a new table). **Alembic is now set up** (`backend/alembic.ini` + `migrations/`): `migrations/versions/001_initial_schema.py` creates all 12 tables. In production (Postgres), the Render start command and GitHub Actions run `alembic upgrade head` before starting. To add a column in production: write a new migration with `alembic revision -m "describe change"`, implement `upgrade()`/`downgrade()`, then deploy.
 - **Absolute paths (hard-won):** `settings.py` computes `DATABASE_URL` and the pydantic `env_file` as ABSOLUTE paths from `__file__`. They used to be relative (`./jobpls.db`, `.env`); when the launch CWD drifted (e.g. `--app-dir` doesn't change CWD) a **second** `jobpls.db` was created elsewhere, silently splitting writes from reads for a whole session. Never reintroduce relative paths here.
 - Windows process cleanup: orphaned uvicorn `multiprocessing.spawn` children can keep holding port 8000 after the parent is killed — find them with `Get-CimInstance Win32_Process | ? { $_.Name -match 'python' }` and `Stop-Process`.
 
@@ -105,9 +111,24 @@ Two layers: **system env** (`backend/.env` / `settings.py`) vs **per-user config
 - **System env** (defaults in `settings.py`): `DATABASE_URL` (absolute sqlite), `AUTH_MODE`, `JWT_SECRET`, `SUPABASE_*`, `ALLOWED_ORIGINS`, `APP_BASE_URL`, `EMAIL_PROVIDER`/`RESEND_API_KEY`/`EMAIL_FROM` (fallbacks), `MANAGED_CLAUDE_API_KEY`, and the agent cadence `DISCOVERY_INTERVAL_HOURS` (6), `SCORING_INTERVAL_MINUTES` (30), `DIGEST_INTERVAL_HOURS` (12).
 - **Per-user config** (Settings UI): `AI_PROVIDER`/`OLLAMA_*`/`CLAUDE_*`, `KEYWORDS`/`ELIGIBLE_TYPES`/`BLOCKLIST_COMPANIES`, `PROFILE_BLURB`/`JOB_PREFERENCES`, email (`EMAIL_PROVIDER`, `SMTP_*`, `EMAIL_FROM`, `RESEND_API_KEY`, `DIGEST_EMAIL`, `DIGEST_ENABLED`, `DIGEST_MIN_TIER`, internal `LAST_DIGEST_AT`), apply (`APPLY_AUTOSUBMIT`, `APPLY_HEADLESS`), discovery keys (`JOB_LOCATION`, `JSEARCH_API_KEY`, `ADZUNA_APP_ID/KEY/COUNTRY`), `SCHEDULER_ENABLED`. Per-user config overrides system env where both exist (e.g. email provider).
 
-## Deployment roadmap (later)
+## Deployment (current architecture)
 
-Flip env vars, no app-code changes for the data layer: `DATABASE_URL` → Supabase Postgres, `AUTH_MODE=supabase` (+ JWKS/secret), `ALLOWED_ORIGINS`/`APP_BASE_URL` → Render URLs, `EMAIL_PROVIDER=resend`. Remaining work for deploy: add Alembic migrations, swap the frontend login to Supabase JS, object storage for CV files (Supabase Storage), and Stripe tiers (Free=local Ollama, Pro=BYO Claude key, Premium=managed Claude). Mobile app reuses the same REST API.
+**Stack in production:**
+- **Supabase** — Postgres DB (`DATABASE_URL=postgresql+psycopg://...`) + Auth (JWT verification via `SUPABASE_JWT_SECRET`). Supabase project: `yppmdrarxoajctrnwbga`.
+- **Render (free tier)** — backend FastAPI web service (`jobpls-backend.onrender.com`) + frontend static site (`jobpls-frontend.onrender.com`). The backend may sleep on the free tier; the static site never does.
+- **GitHub Actions cron** (`.github/workflows/agent.yml`) — runs `backend/run_agent.py` every 6h. This is the **reliable scheduler** regardless of Render sleep. Only secret needed: `DATABASE_URL` (GitHub → Settings → Secrets → Actions). AI + email keys are read from per-user DB config set via the Settings UI.
+
+**How the agent runs per-user:** `run_agent.py` loops all users with `AUTOMATION_ENABLED=true`, creates a `Run` row, calls `services/automation.run_cycle(user_id, run_id)` synchronously → discover → assess (server-side AI only; ollama_browser is skipped) → expire stale jobs → send digest email.
+
+**To use the scheduled agent (cloud setup):**
+1. Settings → AI: set `AI_PROVIDER` to `gemini` or `claude_byok` + paste API key (stored in Supabase DB, not in GitHub)
+2. Settings → Email: set `EMAIL_PROVIDER=resend` + `RESEND_API_KEY` (also stored in DB)
+3. Settings → Scheduler: enable `AUTOMATION_ENABLED=true`
+4. GitHub → Actions → Job Agent → Run workflow (test it manually first)
+
+**Frontend auth in production:** `AuthContext` detects `VITE_SUPABASE_URL` at build time; if set, uses Supabase JS (`supabase.auth.signInWithPassword`) and stores the Supabase access token as `jobpls_token`. Backend verifies it via `SUPABASE_JWT_SECRET`. Local dev still uses the `/auth/signup` + `/auth/login` endpoints.
+
+**Remaining roadmap:** object storage for CV files (Supabase Storage), Stripe tiers (Free=local Ollama, Pro=BYO key, Premium=managed), mobile app (same REST API, drop-in JWT consumer).
 
 ## Conventions & gotchas
 
