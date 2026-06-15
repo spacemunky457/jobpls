@@ -13,6 +13,7 @@ import { Container } from '../components/ui/Container'
 import { Badge } from '../components/ui/Badge'
 import { Textarea } from '../components/ui/Input'
 import { StatTile } from '../components/workflow/StatTile'
+import { AUTOMATION_PHASES } from '../components/workflow/ActivityBar'
 import { REQUEST_TYPE_LABEL, tierMeta } from '../lib/status'
 import { cn } from '../lib/cn'
 
@@ -23,14 +24,6 @@ const STAT_LINKS: { key: keyof Stats; label: string; to: string; accent: string 
   { key: 'drafted', label: 'Ready', to: '/apply', accent: 'bg-purple-500' },
   { key: 'applied', label: 'Sent', to: '/apply?tab=sent', accent: 'bg-green-500' },
 ]
-
-const PHASE_LABEL: Record<string, string> = {
-  queued: 'Starting…',
-  discovering: 'Discovering jobs…',
-  assessing: 'Assessing matches…',
-  expiring: 'Retiring stale postings…',
-  digesting: 'Sending digest…',
-}
 
 /** The hero shows the single next HUMAN action; machine work lives in the automation tile. */
 function useNextAction(stats: Stats | undefined, requestCount: number) {
@@ -101,7 +94,7 @@ function AutomationTile() {
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold text-ink">Automation</span>
           <span className="block text-[11px] text-ink-muted">
-            {auto.running ? PHASE_LABEL[last?.phase ?? ''] || 'Running…'
+            {auto.running ? AUTOMATION_PHASES[last?.phase ?? '']?.label || 'Running…'
               : auto.enabled ? `On · every ${auto.interval_hours}h`
               : ready ? 'Off' : 'Needs setup'}
           </span>

@@ -20,6 +20,7 @@ DEFAULT_CONFIG = {
     "COUNTRY_BLOCKLIST": "",
     "PROFILE_BLURB": "",
     "JOB_PREFERENCES": "",
+    "TARGET_PRIORITIES": "",      # niches to hunt for; matching roles get the "perfect" tier
     "ELIGIBLE_TYPES": "global,emea,contractor",
     "BLOCKLIST_COMPANIES": "",
     "SCHEDULER_ENABLED": "true",

@@ -5,7 +5,7 @@ from services.ai.base import AIProvider
 
 log = logging.getLogger(__name__)
 
-TIERS = ("strong", "possible", "stretch", "skip")
+TIERS = ("perfect", "strong", "possible", "stretch", "skip")
 
 
 def _clamp(val) -> int | None:
@@ -23,6 +23,8 @@ def _tier(result: dict, match: int | None) -> str | None:
         return t
     if match is None:
         return None
+    if match >= 93:
+        return "perfect"
     if match >= 75:
         return "strong"
     if match >= 50:
@@ -32,16 +34,23 @@ def _tier(result: dict, match: int | None) -> str | None:
     return "skip"
 
 
-def apply_match(job: Job, result: dict) -> None:
-    """Persist a parsed candidate-match result onto a job (shared by server + browser paths)."""
+def apply_match(job: Job, result: dict) -> bool:
+    """Persist a parsed candidate-match result onto a job (shared by server +
+    browser paths). Returns False — leaving the job untouched — when the parse
+    carried no signal (empty/truncated AI response): marking such a job
+    "assessed" would park it forever with no tier, invisible to digests."""
     m = _clamp(result.get("match"))
+    tier = _tier(result, m)
+    if m is None and tier is None and not str(result.get("verdict") or "").strip():
+        return False
     job.match = m
-    job.tier = _tier(result, m)
+    job.tier = tier
     job.eligibility = result.get("eligibility", "unclear")
     job.verdict = result.get("verdict", "")
     job.strengths = ", ".join(result.get("strengths") or [])
     job.gaps = ", ".join(result.get("gaps") or [])
     job.status = "assessed"
+    return True
 
 
 def match_batch(
@@ -54,6 +63,7 @@ def match_batch(
 ) -> int:
     profile = config.get("PROFILE_BLURB", "")
     preferences = config.get("JOB_PREFERENCES", "")
+    priorities = config.get("TARGET_PRIORITIES", "")
     eligible_types = config.get("ELIGIBLE_TYPES", "global,emea,contractor")
 
     jobs = (
@@ -72,14 +82,16 @@ def match_batch(
             "jd_text": job.jd_text or "",
         }
         try:
-            result = provider.assess_match(profile, cv_text, preferences, eligible_types, job_dict)
+            result = provider.assess_match(profile, cv_text, preferences, eligible_types, job_dict, priorities)
         except Exception as e:
             log.error("Match assessment failed for job %s: %s", job.id, e)
             job.status = f"error:{str(e)[:60]}"
             db.commit()
             done += 1
             continue
-        apply_match(job, result)
+        if not apply_match(job, result):
+            log.error("Empty assessment for job %s — marking error", job.id)
+            job.status = "error:empty AI response"
         db.commit()
         done += 1
     return done

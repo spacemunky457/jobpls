@@ -11,6 +11,7 @@ import {
   updateApplication,
 } from '../api/client'
 import { runTasks } from '../ai/ollamaBrowser'
+import { useActivity } from '../components/workflow/ActivityContext'
 import { PageHeader } from '../components/layout/PageHeader'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -139,10 +140,15 @@ function ApplicationKit({ job }: { job: Job }) {
             </Button>
           </StepRow>
 
-          <StepRow n={2} title="Download a copy" desc="Optional — keep the tailored CV for your records." done={downloaded}>
-            <button className="btn" onClick={() => { downloadApplication(job.id); setDownloaded(true) }}>
-              <Download size={15} /> Download CV
-            </button>
+          <StepRow n={2} title="Download a copy" desc="The tailored CV for this job, as PDF or Word." done={downloaded}>
+            <div className="flex items-center gap-2">
+              <button className="btn" onClick={() => { downloadApplication(job.id, 'pdf'); setDownloaded(true) }}>
+                <Download size={15} /> PDF
+              </button>
+              <button className="btn" onClick={() => { downloadApplication(job.id, 'docx'); setDownloaded(true) }}>
+                <Download size={15} /> DOCX
+              </button>
+            </div>
           </StepRow>
         </div>
 
@@ -239,15 +245,24 @@ function InProgress() {
 
   const selected = jobs.find((j) => j.id === selectedId) ?? jobs[0] ?? null
 
+  const { setActivity } = useActivity()
   const tailor = useMutation({
+    // Running-state display lives in the global ActivityBar (survives page
+    // changes); this page only keeps error / result messages.
     mutationFn: async () => {
-      if (provider === 'ollama_browser') {
-        const tasks = await prepareTailor()
-        if (!tasks.length) return { message: 'Nothing to tailor.' }
-        const results = await runTasks(tasks, (d, t) => setProgress(`Tailoring ${d}/${t} in your browser…`))
-        return ingestTailor(results)
+      try {
+        if (provider === 'ollama_browser') {
+          const tasks = await prepareTailor()
+          if (!tasks.length) return { message: 'Nothing to tailor.' }
+          setActivity({ kind: 'tailor', browser: true, done: 0, total: tasks.length })
+          const results = await runTasks(tasks, (d, t) => setActivity({ kind: 'tailor', browser: true, done: d, total: t }))
+          return await ingestTailor(results)
+        }
+        setActivity({ kind: 'tailor' })
+        return await runApprovals()
+      } finally {
+        setActivity(null)
       }
-      return runApprovals()
     },
     onSuccess: () => {
       setProgress('')
@@ -259,8 +274,13 @@ function InProgress() {
   const draftedCount = jobs.filter((j) => j.status === 'drafted').length
   const batchApply = useMutation({
     mutationFn: async () => {
+      setActivity({ kind: 'apply' })
       setProgress(`Auto-applying to ${draftedCount} tailored job${draftedCount !== 1 ? 's' : ''}… this drives a browser per job, give it a moment.`)
-      return applyBatch()
+      try {
+        return await applyBatch()
+      } finally {
+        setActivity(null)
+      }
     },
     onSuccess: (r) => {
       setProgress(`Auto-apply done — ${r.submitted} submitted, ${r.failed} failed, ${r.skipped} skipped.`)
@@ -405,8 +425,11 @@ function SentDrawer({ job, onClose }: { job: Job | null; onClose: () => void }) 
       subtitle={job?.company}
       footer={job && (
         <div className="flex items-center gap-2">
-          <button className="btn" onClick={() => downloadApplication(job.id)}>
-            <Download size={14} /> Download CV
+          <button className="btn" onClick={() => downloadApplication(job.id, 'pdf')}>
+            <Download size={14} /> PDF
+          </button>
+          <button className="btn" onClick={() => downloadApplication(job.id, 'docx')}>
+            <Download size={14} /> DOCX
           </button>
           <a href={job.url} target="_blank" rel="noreferrer" className="btn">
             <ExternalLink size={14} /> Open posting

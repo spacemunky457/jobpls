@@ -2,18 +2,20 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
-  Check, CheckCheck, ChevronDown, ChevronUp, ExternalLink, LayoutGrid, Rows3, Search,
+  Check, CheckCheck, ChevronDown, ChevronUp, ExternalLink, Layers, LayoutGrid, Rows3, Search,
   Sparkles, Trash2, X,
 } from 'lucide-react'
 import {
-  deleteJob, fetchConfig, fetchJobs, ingestAssessments, Job, prepareAssess, runAssess,
-  setApproval, setApprovalBatch, setStatus,
+  deleteJobsBatch, fetchConfig, fetchJobs, ingestAssessments, Job, prepareAssess,
+  runAssess, setApproval, setApprovalBatch, setStatus,
 } from '../api/client'
 import { runTasks } from '../ai/ollamaBrowser'
+import { useActivity } from '../components/workflow/ActivityContext'
 import { PageHeader } from '../components/layout/PageHeader'
 import { Button } from '../components/ui/Button'
 import { Container } from '../components/ui/Container'
 import { Drawer } from '../components/ui/Drawer'
+import { JDText } from '../components/ui/JDText'
 import { Input, Select } from '../components/ui/Input'
 import { EmptyState } from '../components/ui/EmptyState'
 import { Skeleton } from '../components/ui/Spinner'
@@ -21,7 +23,7 @@ import { ProgressBanner } from '../components/workflow/ProgressBanner'
 import { ELIGIBILITY_CLASS, STATUS_CLASS, TIERS, tierMeta } from '../lib/status'
 import { cn } from '../lib/cn'
 
-const TIER_RANK: Record<string, number> = { strong: 0, possible: 1, stretch: 2, skip: 3 }
+const TIER_RANK: Record<string, number> = { perfect: 0, strong: 1, possible: 2, stretch: 3, skip: 4 }
 const STATUS_DOT: Record<string, string> = {
   new: 'bg-blue-500',
   assessed: 'bg-slate-400',
@@ -35,6 +37,16 @@ const ELIGIBILITY_OPTIONS = ['global', 'emea', 'contractor', 'us-only', 'needs-r
 function TierBadge({ tier, className }: { tier: string | null; className?: string }) {
   const m = tierMeta(tier)
   return <span className={cn('badge', m.class, className)}>{m.label}</span>
+}
+
+// Collapse a free-text job location to the country/region ("Istanbul, Turkey" →
+// "Turkey"), or "Remote". Short remote qualifiers ("Remote - EMEA") pass through.
+function regionOf(location: string | null | undefined): string {
+  const loc = (location || '').trim()
+  if (!loc) return 'Remote'
+  if (/remote|anywhere|worldwide/i.test(loc)) return loc.length <= 26 ? loc : 'Remote'
+  const parts = loc.split(/[,;|•]/).map((s) => s.trim()).filter(Boolean)
+  return parts[parts.length - 1] || loc
 }
 
 // --- Shared mutations ---
@@ -69,11 +81,11 @@ function useJobMutations() {
     onSettled: invalidate,
   })
   const deleteMut = useMutation({
-    mutationFn: deleteJob,
-    onMutate: async (id: number) => {
+    mutationFn: deleteJobsBatch,
+    onMutate: async (ids: number[]) => {
       await qc.cancelQueries({ queryKey: ['jobs'] })
       const prev = qc.getQueryData<Job[]>(['jobs'])
-      qc.setQueryData<Job[]>(['jobs'], (old) => old?.filter((j) => j.id !== id))
+      qc.setQueryData<Job[]>(['jobs'], (old) => old?.filter((j) => !ids.includes(j.id)))
       return { prev }
     },
     onError: (_e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(['jobs'], ctx.prev) },
@@ -130,8 +142,8 @@ function DeckCard({ job, onPass, onShortlist }: { job: Job; onPass: () => void; 
         {showJD ? <ChevronUp size={13} /> : <ChevronDown size={13} />} Full job description
       </button>
       {showJD && (
-        <div className="mt-2 max-h-56 overflow-y-auto whitespace-pre-wrap rounded-xl bg-surface-muted p-3 text-xs leading-relaxed text-ink-muted ring-1 ring-ink/5">
-          {job.jd_text || 'No description captured.'}
+        <div className="mt-2 max-h-56 overflow-y-auto rounded-xl bg-surface-muted p-3 text-xs leading-relaxed text-ink-muted ring-1 ring-ink/5">
+          <JDText text={job.jd_text || ''} />
         </div>
       )}
 
@@ -165,7 +177,7 @@ function Deck({ jobs }: { jobs: Job[] }) {
       [...jobs]
         .filter((j) => j.status === 'assessed' && !j.approved)
         .sort((a, b) =>
-          (TIER_RANK[a.tier ?? ''] ?? 4) - (TIER_RANK[b.tier ?? ''] ?? 4) || (b.match ?? -1) - (a.match ?? -1)),
+          (TIER_RANK[a.tier ?? ''] ?? 5) - (TIER_RANK[b.tier ?? ''] ?? 5) || (b.match ?? -1) - (a.match ?? -1)),
     [jobs],
   )
   const total = queue.length
@@ -211,7 +223,7 @@ function Deck({ jobs }: { jobs: Job[] }) {
   )
 }
 
-// --- The grid (secondary view): browse, filter, bulk ops ---
+// --- Browse views (list = default, grid): filter, bulk ops ---
 
 function ApproveButton({ job, onToggle, size = 'sm' }: { job: Job; onToggle: (job: Job) => void; size?: 'sm' | 'md' }) {
   return (
@@ -231,16 +243,36 @@ function ApproveButton({ job, onToggle, size = 'sm' }: { job: Job; onToggle: (jo
   )
 }
 
-function JobTile({ job, onOpen, onToggle }: { job: Job; onOpen: (job: Job) => void; onToggle: (job: Job) => void }) {
+function SelectBox({ job, selected, onSelect }: { job: Job; selected: boolean; onSelect: (job: Job) => void }) {
+  return (
+    <input
+      type="checkbox"
+      checked={selected}
+      onChange={() => onSelect(job)}
+      onClick={(e) => e.stopPropagation()}
+      className="h-4 w-4 shrink-0 cursor-pointer rounded accent-brand-600"
+      aria-label={`Select ${job.title}`}
+    />
+  )
+}
+
+function JobTile({ job, onOpen, onToggle, selected, onSelect }: {
+  job: Job
+  onOpen: (job: Job) => void
+  onToggle: (job: Job) => void
+  selected: boolean
+  onSelect: (job: Job) => void
+}) {
   return (
     <article
       role="button"
       tabIndex={0}
       onClick={() => onOpen(job)}
       onKeyDown={(e) => { if (e.key === 'Enter') onOpen(job) }}
-      className="tile tile-interactive min-h-[176px] animate-fade-up"
+      className={cn('tile tile-interactive min-h-[176px] animate-fade-up', selected && 'ring-2 ring-brand-400')}
     >
       <div className="flex items-center gap-2">
+        <SelectBox job={job} selected={selected} onSelect={onSelect} />
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-brand-50 text-sm font-semibold text-brand-700">
           {(job.company || '?').charAt(0).toUpperCase()}
         </span>
@@ -250,11 +282,11 @@ function JobTile({ job, onOpen, onToggle }: { job: Job; onOpen: (job: Job) => vo
         <span className={cn('h-2 w-2 shrink-0 rounded-full', STATUS_DOT[job.status] ?? 'bg-slate-300')} title={job.status} />
       </div>
 
-      <h3 className="mt-2.5 line-clamp-2 text-sm font-semibold leading-snug text-ink">{job.title}</h3>
-      <p className="mt-0.5 truncate text-xs text-ink-muted">
-        {job.company}
-        {job.location ? ` · ${job.location}` : ''}
-      </p>
+      <h3 className="mt-2.5 truncate text-sm font-semibold leading-snug text-ink">
+        {job.company || 'Unknown company'}
+        <span className="font-normal text-ink-muted"> · {regionOf(job.location)}</span>
+      </h3>
+      <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-snug text-ink">{job.title}</p>
       {job.verdict && <p className="mt-1.5 line-clamp-2 text-xs italic leading-snug text-ink-muted">“{job.verdict}”</p>}
 
       <div className="mt-auto flex items-center justify-between gap-2 pt-3">
@@ -268,6 +300,52 @@ function JobTile({ job, onOpen, onToggle }: { job: Job; onOpen: (job: Job) => vo
         </div>
         <ApproveButton job={job} onToggle={onToggle} />
       </div>
+    </article>
+  )
+}
+
+function JobRow({ job, onOpen, onToggle, selected, onSelect }: {
+  job: Job
+  onOpen: (job: Job) => void
+  onToggle: (job: Job) => void
+  selected: boolean
+  onSelect: (job: Job) => void
+}) {
+  return (
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(job)}
+      onKeyDown={(e) => { if (e.key === 'Enter') onOpen(job) }}
+      className={cn('tile tile-interactive animate-fade-up flex-row items-center gap-3 px-3.5 py-2.5', selected && 'ring-2 ring-brand-400')}
+    >
+      <SelectBox job={job} selected={selected} onSelect={onSelect} />
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-50 text-sm font-semibold text-brand-700">
+        {(job.company || '?').charAt(0).toUpperCase()}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <h3 className="truncate text-sm font-semibold text-ink">
+            {job.company || 'Unknown company'}
+            <span className="font-normal text-ink-muted"> · {regionOf(job.location)}</span>
+          </h3>
+          <span className="hidden shrink-0 text-[10px] font-medium uppercase tracking-wide text-ink-muted/80 md:inline">
+            via {job.source}
+          </span>
+        </div>
+        <p className="truncate text-[13px] font-medium text-ink">
+          {job.title}
+          {job.verdict && <span className="hidden font-normal italic text-ink-muted lg:inline"> — “{job.verdict}”</span>}
+        </p>
+      </div>
+      {job.eligibility && (
+        <span className={cn('hidden shrink-0 text-[11px] sm:inline', ELIGIBILITY_CLASS[job.eligibility] ?? 'text-ink-muted')}>
+          {job.eligibility}
+        </span>
+      )}
+      <TierBadge tier={job.tier} className="shrink-0" />
+      <span className={cn('h-2 w-2 shrink-0 rounded-full', STATUS_DOT[job.status] ?? 'bg-slate-300')} title={job.status} />
+      <ApproveButton job={job} onToggle={onToggle} />
     </article>
   )
 }
@@ -330,8 +408,8 @@ function JobDrawer({ job, onClose, onToggle, onDelete }: {
 
           <div>
             <p className="label">Job description</p>
-            <div className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-xl bg-surface-muted p-3 text-xs leading-relaxed text-ink-muted ring-1 ring-ink/5">
-              {job.jd_text || 'No description captured.'}
+            <div className="max-h-72 overflow-y-auto rounded-xl bg-surface-muted p-3 text-xs leading-relaxed text-ink-muted ring-1 ring-ink/5">
+              <JDText text={job.jd_text || ''} />
             </div>
           </div>
         </div>
@@ -340,7 +418,7 @@ function JobDrawer({ job, onClose, onToggle, onDelete }: {
   )
 }
 
-function Grid({ jobs, isLoading }: { jobs: Job[]; isLoading: boolean }) {
+function Browse({ jobs, isLoading, mode }: { jobs: Job[]; isLoading: boolean; mode: 'list' | 'grid' }) {
   const [searchParams] = useSearchParams()
   const [search, setSearch] = useState(searchParams.get('search') || '')
   const [tierFilter, setTierFilter] = useState<string[]>([])
@@ -348,8 +426,25 @@ function Grid({ jobs, isLoading }: { jobs: Job[]; isLoading: boolean }) {
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '')
   const [sort, setSort] = useState<'match' | 'newest'>('match')
   const [openId, setOpenId] = useState<number | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const { approveMut, deleteMut } = useJobMutations()
   const toggleApprove = (job: Job) => approveMut.mutate({ ids: [job.id], approved: !job.approved })
+  const toggleSelect = (job: Job) => setSelectedIds((s) => {
+    const next = new Set(s)
+    if (next.has(job.id)) next.delete(job.id)
+    else next.add(job.id)
+    return next
+  })
+  const deleteSelected = () => {
+    const ids = [...selectedIds]
+    if (!ids.length) return
+    if (!window.confirm(
+      `Delete ${ids.length} selected job${ids.length !== 1 ? 's' : ''}? ` +
+      'Their dedup keys are cleared too, so a future discovery run may re-find them.',
+    )) return
+    deleteMut.mutate(ids)
+    setSelectedIds(new Set())
+  }
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -364,7 +459,7 @@ function Grid({ jobs, isLoading }: { jobs: Job[]; isLoading: boolean }) {
     })
     if (sort === 'match') {
       return [...filtered].sort((a, b) =>
-        (TIER_RANK[a.tier ?? ''] ?? 4) - (TIER_RANK[b.tier ?? ''] ?? 4) || (b.match ?? -1) - (a.match ?? -1))
+        (TIER_RANK[a.tier ?? ''] ?? 5) - (TIER_RANK[b.tier ?? ''] ?? 5) || (b.match ?? -1) - (a.match ?? -1))
     }
     return filtered
   }, [jobs, search, statusFilter, tierFilter, eligFilter, sort])
@@ -401,6 +496,29 @@ function Grid({ jobs, isLoading }: { jobs: Job[]; isLoading: boolean }) {
           {activeFilters > 0 && (
             <button type="button" onClick={clearFilters} className="text-xs font-medium text-brand-600 hover:text-brand-700">
               Clear filters
+            </button>
+          )}
+          {selectedIds.size > 0 ? (
+            <>
+              <button
+                type="button"
+                onClick={deleteSelected}
+                disabled={deleteMut.isPending}
+                className="btn text-red-600 hover:border-red-200 hover:text-red-700"
+              >
+                <Trash2 size={14} /> Delete selected ({selectedIds.size})
+              </button>
+              <button type="button" onClick={() => setSelectedIds(new Set())} className="text-xs font-medium text-ink-muted hover:text-ink">
+                Clear selection
+              </button>
+            </>
+          ) : visible.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set(visible.map((j) => j.id)))}
+              className="text-xs font-medium text-brand-600 hover:text-brand-700"
+            >
+              Select all
             </button>
           )}
         </div>
@@ -451,9 +569,15 @@ function Grid({ jobs, isLoading }: { jobs: Job[]; isLoading: boolean }) {
       </div>
 
       {isLoading ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-44 w-full rounded-2xl" />)}
-        </div>
+        mode === 'list' ? (
+          <div className="space-y-2">
+            {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-2xl" />)}
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-44 w-full rounded-2xl" />)}
+          </div>
+        )
       ) : visible.length === 0 ? (
         <EmptyState
           icon={<Sparkles size={28} />}
@@ -464,10 +588,22 @@ function Grid({ jobs, isLoading }: { jobs: Job[]; isLoading: boolean }) {
           actionLabel={activeFilters > 0 ? undefined : 'Go to Home'}
           actionTo={activeFilters > 0 ? undefined : '/'}
         />
+      ) : mode === 'list' ? (
+        <div className="space-y-2">
+          {visible.map((job) => (
+            <JobRow
+              key={job.id} job={job} onOpen={(j) => setOpenId(j.id)} onToggle={toggleApprove}
+              selected={selectedIds.has(job.id)} onSelect={toggleSelect}
+            />
+          ))}
+        </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {visible.map((job) => (
-            <JobTile key={job.id} job={job} onOpen={(j) => setOpenId(j.id)} onToggle={toggleApprove} />
+            <JobTile
+              key={job.id} job={job} onOpen={(j) => setOpenId(j.id)} onToggle={toggleApprove}
+              selected={selectedIds.has(job.id)} onSelect={toggleSelect}
+            />
           ))}
         </div>
       )}
@@ -476,7 +612,7 @@ function Grid({ jobs, isLoading }: { jobs: Job[]; isLoading: boolean }) {
         job={openJob}
         onClose={() => setOpenId(null)}
         onToggle={toggleApprove}
-        onDelete={(id) => deleteMut.mutate(id)}
+        onDelete={(id) => deleteMut.mutate([id])}
       />
     </div>
   )
@@ -487,23 +623,33 @@ function Grid({ jobs, isLoading }: { jobs: Job[]; isLoading: boolean }) {
 export default function Review() {
   const qc = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
-  const view = searchParams.get('view') === 'grid' ? 'grid' : 'deck'
+  const viewParam = searchParams.get('view')
+  const view = viewParam === 'grid' || viewParam === 'deck' ? viewParam : 'list'
   const [progress, setProgress] = useState('')
 
   const { data: config } = useQuery({ queryKey: ['config'], queryFn: fetchConfig })
   const provider = config?.AI_PROVIDER || 'ollama_browser'
   const { data: jobs = [], isLoading } = useQuery({ queryKey: ['jobs'], queryFn: () => fetchJobs({ limit: 500 }) })
   const { approveMut } = useJobMutations()
+  const { setActivity } = useActivity()
 
   const assess = useMutation({
+    // Running-state display lives in the global ActivityBar (survives page
+    // changes); this page only keeps error / result messages.
     mutationFn: async () => {
-      if (provider === 'ollama_browser') {
-        const tasks = await prepareAssess(50)
-        if (!tasks.length) return { success: true, message: 'Nothing new to assess.', count: 0 }
-        const results = await runTasks(tasks, (d, t) => setProgress(`Assessing ${d}/${t} in your browser…`))
-        return ingestAssessments(results)
+      try {
+        if (provider === 'ollama_browser') {
+          const tasks = await prepareAssess(50)
+          if (!tasks.length) return { success: true, message: 'Nothing new to assess.', count: 0 }
+          setActivity({ kind: 'assess', browser: true, done: 0, total: tasks.length })
+          const results = await runTasks(tasks, (d, t) => setActivity({ kind: 'assess', browser: true, done: d, total: t }))
+          return await ingestAssessments(results)
+        }
+        setActivity({ kind: 'assess' })
+        return await runAssess()
+      } finally {
+        setActivity(null)
       }
-      return runAssess()
     },
     onSuccess: () => {
       setProgress('')
@@ -514,20 +660,22 @@ export default function Review() {
   })
 
   const newCount = jobs.filter((j) => j.status === 'new').length
-  const strongUnapproved = jobs.filter((j) => j.tier === 'strong' && j.status === 'assessed' && !j.approved)
+  const strongUnapproved = jobs.filter(
+    (j) => (j.tier === 'perfect' || j.tier === 'strong') && j.status === 'assessed' && !j.approved,
+  )
 
   return (
     <Container width="lg" className="space-y-4">
       <PageHeader
         title="Review"
-        description="One decision at a time: shortlist the matches worth pursuing, pass on the rest."
+        description="Shortlist the matches worth pursuing, pass on the rest."
         actions={
           <>
             <div className="flex items-center gap-0.5 rounded-xl bg-surface-muted p-0.5">
-              {([['deck', Rows3], ['grid', LayoutGrid]] as const).map(([v, Icon]) => (
+              {([['list', Rows3], ['grid', LayoutGrid], ['deck', Layers]] as const).map(([v, Icon]) => (
                 <button
                   key={v}
-                  onClick={() => setSearchParams(v === 'deck' ? {} : { view: 'grid' }, { replace: true })}
+                  onClick={() => setSearchParams(v === 'list' ? {} : { view: v }, { replace: true })}
                   className={cn(
                     'inline-flex items-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-xs font-medium capitalize transition-all',
                     view === v ? 'bg-surface text-ink shadow-tile ring-1 ring-ink/5' : 'text-ink-muted hover:text-ink',
@@ -537,13 +685,13 @@ export default function Review() {
                 </button>
               ))}
             </div>
-            {view === 'grid' && strongUnapproved.length > 0 && (
+            {view !== 'deck' && strongUnapproved.length > 0 && (
               <Button
                 onClick={() => approveMut.mutate({ ids: strongUnapproved.map((j) => j.id), approved: true })}
                 disabled={approveMut.isPending}
               >
                 <CheckCheck size={15} className="text-green-600" />
-                Shortlist all strong ({strongUnapproved.length})
+                Shortlist top matches ({strongUnapproved.length})
               </Button>
             )}
             {(provider === 'ollama_browser' ? newCount > 0 : true) && (
@@ -562,7 +710,7 @@ export default function Review() {
       {view === 'deck' ? (
         isLoading ? <Skeleton className="mx-auto h-96 w-full max-w-2xl rounded-2xl" /> : <Deck jobs={jobs} />
       ) : (
-        <Grid jobs={jobs} isLoading={isLoading} />
+        <Browse jobs={jobs} isLoading={isLoading} mode={view} />
       )}
     </Container>
   )

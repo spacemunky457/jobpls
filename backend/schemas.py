@@ -60,6 +60,10 @@ class JobBatchApprove(BaseModel):
     approved: bool
 
 
+class JobBatchDelete(BaseModel):
+    ids: list[int]
+
+
 class JobStatusUpdate(BaseModel):
     status: str
 

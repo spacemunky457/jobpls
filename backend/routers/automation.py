@@ -90,7 +90,7 @@ def update_automation(
         updates["DIGEST_MODE"] = body.digest_mode
     if body.digest_time is not None:
         updates["DIGEST_TIME"] = body.digest_time
-    if body.digest_min_tier in ("strong", "possible", "stretch"):
+    if body.digest_min_tier in ("perfect", "strong", "possible", "stretch"):
         updates["DIGEST_MIN_TIER"] = body.digest_min_tier
 
     for key, value in updates.items():

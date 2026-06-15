@@ -62,11 +62,14 @@ function StepYou() {
   const { data: cfg } = useQuery({ queryKey: ['config'], queryFn: fetchConfig })
   const [profile, setProfile] = useState<string | null>(null)
   const [prefs, setPrefs] = useState<string | null>(null)
+  const [targets, setTargets] = useState<string | null>(null)
   const { saved, flash } = useSavedFlag()
+  const dirty = profile !== null || prefs !== null || targets !== null
   const mut = useMutation({
     mutationFn: () => saveConfig({
       PROFILE_BLURB: profile ?? cfg?.PROFILE_BLURB ?? '',
       JOB_PREFERENCES: prefs ?? cfg?.JOB_PREFERENCES ?? '',
+      TARGET_PRIORITIES: targets ?? cfg?.TARGET_PRIORITIES ?? '',
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['config'] })
@@ -74,15 +77,27 @@ function StepYou() {
       flash()
     },
   })
+  // Auto-save when a field loses focus — clicking the wizard's "Continue"
+  // blurs the textarea first, so edits survive navigation without the user
+  // having to find the Save button.
+  const saveIfDirty = () => { if (dirty && !mut.isPending) mut.mutate() }
   return (
     <div className="space-y-4">
       <Card className="space-y-5">
-        <Field label="Profile / background blurb" hint="Used by the AI when assessing your match. Your experience, tools, constraints.">
-          <Textarea className="h-32" value={profile ?? cfg?.PROFILE_BLURB ?? ''} onChange={(e) => setProfile(e.target.value)} />
+        <p className="rounded-lg bg-brand-50/60 px-3 py-2 text-xs text-ink-muted ring-1 ring-brand-100">
+          These three fields are sent to the AI with every <b>match assessment</b> and <b>CV tailoring</b>.
+          They don't control what gets <i>searched</i> — that's the Keywords list in the Sources step.
+        </p>
+        <Field label="Profile / background blurb" hint="Your experience, tools, constraints — the AI assesses every job against this plus your CV.">
+          <Textarea className="h-32" value={profile ?? cfg?.PROFILE_BLURB ?? ''} onChange={(e) => setProfile(e.target.value)} onBlur={saveIfDirty} />
         </Field>
-        <Field label="Job preferences & nuances" hint="What you're looking for, deal-breakers, niches. The more specific, the better the assessment.">
+        <Field label="Job preferences & nuances" hint="Deal-breakers and leanings. The assessor reads these when scoring your fit.">
           <Textarea className="h-32" placeholder="e.g. avoid pure support roles; prefer async teams; open to contractor/EOR; care about AI tooling…"
-            value={prefs ?? cfg?.JOB_PREFERENCES ?? ''} onChange={(e) => setPrefs(e.target.value)} />
+            value={prefs ?? cfg?.JOB_PREFERENCES ?? ''} onChange={(e) => setPrefs(e.target.value)} onBlur={saveIfDirty} />
+        </Field>
+        <Field label="Target roles & priorities" hint="The niches you're hunting for. Jobs that hit one of these AND your qualifications get the top 'Perfect' tier and jump every queue.">
+          <Textarea className="h-32" placeholder="e.g. AI-driven process optimization in customer support / support QA; fintech or crypto companies; roles looking for Turkish speakers…"
+            value={targets ?? cfg?.TARGET_PRIORITIES ?? ''} onChange={(e) => setTargets(e.target.value)} onBlur={saveIfDirty} />
         </Field>
         <SaveBtn onClick={() => mut.mutate()} saving={mut.isPending} saved={saved} />
       </Card>
@@ -103,12 +118,15 @@ function ApplicantDetails() {
     mutationFn: () => updateApplicant(edits),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['applicant'] }); setEdits({}); flash() },
   })
+  // Blur bubbles from every field to this container: pending edits are saved
+  // whenever focus leaves a field, so wizard navigation can't drop them.
+  const saveOnBlur = () => { if (Object.keys(edits).length > 0 && !mut.isPending) mut.mutate() }
   return (
     <details className="card group">
       <summary className="cursor-pointer select-none text-sm font-medium text-ink">
         Applicant details for auto-apply <span className="text-ink-muted">(optional — name, phone, links typed into forms)</span>
       </summary>
-      <div className="mt-4 space-y-4">
+      <div className="mt-4 space-y-4" onBlur={saveOnBlur}>
         <div className="grid grid-cols-2 gap-3">
           <Field label="First name"><Input value={(val('first_name') as string) || ''} onChange={(e) => set('first_name', e.target.value)} /></Field>
           <Field label="Last name"><Input value={(val('last_name') as string) || ''} onChange={(e) => set('last_name', e.target.value)} /></Field>
@@ -172,10 +190,11 @@ function CVEditor({ cv, onDefault, onDelete }: { cv: MasterCV; onDefault: () => 
     mutationFn: () => updateCV(cv.id, { name, content }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['cvs'] }); qc.invalidateQueries({ queryKey: ['setup'] }); flash() },
   })
+  const saveOnBlur = () => { if ((name !== cv.name || content !== cv.content) && !save.isPending) save.mutate() }
   return (
     <Card className="space-y-2">
       <div className="flex items-center gap-2">
-        <Input className="flex-1" value={name} onChange={(e) => setName(e.target.value)} />
+        <Input className="flex-1" value={name} onChange={(e) => setName(e.target.value)} onBlur={saveOnBlur} />
         {cv.is_default ? (
           <Badge variant="brand"><Star size={12} className="mr-1" /> Default</Badge>
         ) : (
@@ -183,7 +202,7 @@ function CVEditor({ cv, onDefault, onDelete }: { cv: MasterCV; onDefault: () => 
         )}
         <Button onClick={onDelete}><Trash2 size={14} /></Button>
       </div>
-      <Textarea className="h-40 font-mono text-xs" value={content} onChange={(e) => setContent(e.target.value)} />
+      <Textarea className="h-40 font-mono text-xs" value={content} onChange={(e) => setContent(e.target.value)} onBlur={saveOnBlur} />
       <SaveBtn onClick={() => save.mutate()} saving={save.isPending} saved={saved} />
     </Card>
   )
@@ -219,8 +238,10 @@ function ProfileEditor({ profile, onDefault, onDelete }: { profile: TailoringPro
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['profiles'] }); flash() },
   })
   const set = (k: string, v: string) => setOpts((o) => ({ ...o, [k]: v }))
+  const dirty = name !== profile.name || JSON.stringify(opts) !== JSON.stringify(profile.options || {})
+  const saveOnBlur = () => { if (dirty && !save.isPending) save.mutate() }
   return (
-    <div className="space-y-2 rounded-xl bg-surface-muted p-3 ring-1 ring-ink/5">
+    <div className="space-y-2 rounded-xl bg-surface-muted p-3 ring-1 ring-ink/5" onBlur={saveOnBlur}>
       <div className="flex items-center gap-2">
         <Input className="flex-1" value={name} onChange={(e) => setName(e.target.value)} />
         {profile.is_default ? <Badge variant="brand"><Star size={12} className="mr-1" /> Default</Badge>
@@ -473,6 +494,9 @@ function StepSources() {
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['config'] }); flash() },
   })
+  // Auto-save on blur so edits survive the wizard's "Continue" navigation.
+  const filtersDirty = keywords !== null || countries !== null || eligTypes !== null || blocklist !== null
+  const saveOnBlur = () => { if (filtersDirty) saveFilters.mutate() }
   const ELIG = ['global', 'emea', 'contractor', 'us-only', 'needs-right-to-work', 'unclear']
   const currentElig = (eligTypes ?? cfg?.ELIGIBLE_TYPES ?? 'global,emea,contractor').split(',').map((s) => s.trim())
 
@@ -515,16 +539,16 @@ function StepSources() {
 
       <Card className="space-y-5">
         <Field label="Title keywords" hint="Comma-separated. A job's title must match at least one to be ingested.">
-          <Textarea className="h-20" value={keywords ?? cfg?.KEYWORDS ?? ''} onChange={(e) => setKeywords(e.target.value)} />
+          <Textarea className="h-20" value={keywords ?? cfg?.KEYWORDS ?? ''} onChange={(e) => setKeywords(e.target.value)} onBlur={saveOnBlur} />
         </Field>
         <Field
           label="Banned countries / locations"
           hint="Comma-separated. Jobs whose location mentions one of these are skipped at discovery (jobs with no stated location are kept). Leave blank to ingest from everywhere."
         >
-          <Input value={countries ?? cfg?.COUNTRY_BLOCKLIST ?? ''} onChange={(e) => setCountries(e.target.value)} placeholder="e.g. usa, united states, canada, india" />
+          <Input value={countries ?? cfg?.COUNTRY_BLOCKLIST ?? ''} onChange={(e) => setCountries(e.target.value)} onBlur={saveOnBlur} placeholder="e.g. usa, united states, canada, india" />
         </Field>
         <Field label="Eligible location types" hint="Only jobs matching these are flagged eligible for you.">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5" onBlur={saveOnBlur}>
             {ELIG.map((e) => {
               const active = currentElig.includes(e)
               return (
@@ -545,7 +569,7 @@ function StepSources() {
           </div>
         </Field>
         <Field label="Blocklist companies" hint="Comma-separated company names to skip.">
-          <Input value={blocklist ?? cfg?.BLOCKLIST_COMPANIES ?? ''} onChange={(e) => setBlocklist(e.target.value)} />
+          <Input value={blocklist ?? cfg?.BLOCKLIST_COMPANIES ?? ''} onChange={(e) => setBlocklist(e.target.value)} onBlur={saveOnBlur} />
         </Field>
         <SaveBtn onClick={() => saveFilters.mutate()} saving={saveFilters.isPending} saved={saved} label="Save filters" />
       </Card>
@@ -719,7 +743,8 @@ function StepAutomation() {
           )}
           <Field label="Minimum tier">
             <Select value={auto.digest_min_tier} onChange={(e) => setAuto.mutate({ digest_min_tier: e.target.value })}>
-              <option value="strong">Strong only</option>
+              <option value="perfect">Perfect only</option>
+              <option value="strong">Strong and up</option>
               <option value="possible">Possible and up</option>
               <option value="stretch">Stretch and up</option>
             </Select>

@@ -22,26 +22,39 @@ def parse_json_loose(text: str) -> Optional[dict]:
         return None
 
 
-# --- Candidate match (prompt v2: calibration rubric + evidence-backed strengths) ---
-def build_match_prompt(profile: str, cv_text: str, preferences: str, eligible_types: str, job: dict) -> str:
+# --- Candidate match (prompt v3: target priorities + 'perfect' tier on top of the v2 rubric) ---
+def build_match_prompt(
+    profile: str, cv_text: str, preferences: str, eligible_types: str, job: dict,
+    priorities: str = "",
+) -> str:
     return (
         "You are an experienced technical recruiter assessing how strong a CANDIDATE is for a job, "
         "based on their CV and profile. Judge the candidate's competitiveness for THIS specific role — "
         "skills, experience, and seniority overlap with the requirements. Be calibrated, not generous: "
         "most jobs are NOT a strong match for any given candidate. Output ONLY valid JSON with these keys:\n"
         "  match (0-100 integer: how well the candidate's CV matches this role's requirements),\n"
-        "  tier (one of: strong, possible, stretch, skip),\n"
+        "  tier (one of: perfect, strong, possible, stretch, skip),\n"
         "  eligibility (one of: global, emea, contractor, us-only, needs-right-to-work, unclear),\n"
         "  verdict (one sentence on the candidate's fit for this role),\n"
         "  strengths (array of short phrases: what the candidate brings that fits this role),\n"
         "  gaps (array of short phrases: requirements the candidate is missing or weak on).\n\n"
         "TIER CALIBRATION RUBRIC:\n"
+        "  perfect = everything 'strong' requires AND the role squarely hits the candidate's TARGET\n"
+        "            PRIORITIES below (or, if none are given, a ~95% requirements fit). This is rare —\n"
+        "            the job reads like it was written for this candidate.\n"
         "  strong  = meets ~80%+ of the must-have requirements at the right seniority; would likely\n"
         "            get an interview. Reserve this for genuinely competitive applications.\n"
         "  possible = meets most core requirements with 1-2 real gaps; a sensible application.\n"
         "  stretch = meaningful overlap but missing several key requirements, or a seniority mismatch.\n"
         "  skip    = wrong field, hard eligibility blocker, or under ~30% requirement overlap.\n\n"
-        "EVIDENCE RULE: every item in strengths must be backed by something concrete in the CV or "
+        + (
+            "CANDIDATE TARGET PRIORITIES — the niches this candidate is specifically hunting for. "
+            "A role matching one or more of these AND the candidate's qualifications should be tiered "
+            "perfect; never raise the tier of a role the candidate isn't competitive for:\n"
+            + priorities + "\n\n"
+            if priorities.strip() else ""
+        )
+        + "EVIDENCE RULE: every item in strengths must be backed by something concrete in the CV or "
         "profile (cite it briefly, e.g. \"5y test automation — QA lead role\"). Never invent or "
         "embellish experience. If the CV doesn't show it, it belongs in gaps, not strengths.\n\n"
         "ELIGIBILITY RULES — candidate is based in TURKEY with no EU/US work rights:\n"

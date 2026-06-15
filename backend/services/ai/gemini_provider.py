@@ -88,5 +88,12 @@ class GeminiProvider(AIProvider):
                 reason = (data.get("promptFeedback") or {}).get("blockReason", "no candidates returned")
                 raise RuntimeError(f"Gemini returned no content: {reason}")
             parts = candidates[0].get("content", {}).get("parts", [])
-            return "".join(p.get("text", "") for p in parts)
+            text = "".join(p.get("text", "") for p in parts)
+            if text.strip():
+                return text
+            # A candidate with no text: 2.5 models can burn the whole token
+            # budget on internal "thinking" (common under load) — retry.
+            reason = candidates[0].get("finishReason", "?")
+            last_err = f"empty response (finishReason={reason})"
+            log.warning("Gemini returned empty text (finishReason=%s); retrying", reason)
         raise RuntimeError(f"Gemini API kept failing: {last_err}")

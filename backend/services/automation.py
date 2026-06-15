@@ -18,8 +18,42 @@ MAX_ASSESS_PER_CYCLE = 200
 
 TERMINAL_PHASES = ("done", "error")
 
+# A cycle "running" longer than this is presumed dead (hung fetch, killed
+# thread): reaped so a stale Run row can't wedge the scheduler forever.
+STALE_RUN_HOURS = 3
+
+
+def _reap(db: Session, q, message: str) -> int:
+    n = q.update(
+        {Run.phase: "error", Run.error: message, Run.finished_at: datetime.utcnow()},
+        synchronize_session=False,
+    )
+    if n:
+        db.commit()
+        log.warning("Reaped %d dead run(s): %s", n, message)
+    return n
+
+
+def reap_interrupted_runs(db: Session) -> int:
+    """Startup cleanup: worker threads don't survive a restart (or a --reload),
+    so any unfinished run is dead by definition."""
+    return _reap(
+        db, db.query(Run).filter(Run.phase.notin_(TERMINAL_PHASES)),
+        "interrupted by server restart",
+    )
+
 
 def is_running(db: Session, user_id: str) -> bool:
+    cutoff = datetime.utcnow() - timedelta(hours=STALE_RUN_HOURS)
+    _reap(
+        db,
+        db.query(Run).filter(
+            Run.user_id == user_id,
+            Run.phase.notin_(TERMINAL_PHASES),
+            Run.started_at < cutoff,
+        ),
+        f"no progress for {STALE_RUN_HOURS}h — presumed dead",
+    )
     return (
         db.query(Run)
         .filter(Run.user_id == user_id, Run.phase.notin_(TERMINAL_PHASES))

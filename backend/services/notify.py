@@ -11,7 +11,7 @@ from settings import settings
 
 log = logging.getLogger(__name__)
 
-TIER_RANK = {"strong": 3, "possible": 2, "stretch": 1, "skip": 0}
+TIER_RANK = {"perfect": 4, "strong": 3, "possible": 2, "stretch": 1, "skip": 0}
 
 
 def _link(token: str) -> str:

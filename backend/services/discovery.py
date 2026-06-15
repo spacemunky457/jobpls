@@ -4,6 +4,7 @@ Each fetcher returns a list of dicts with keys:
   source, id, title, company, location, url, description
 """
 
+import html as _html
 import logging
 import re
 import time
@@ -17,9 +18,75 @@ log = logging.getLogger(__name__)
 HEADERS = {"User-Agent": "Jobpls/1.0 job-pipeline"}
 TIMEOUT = 12
 
+# COUNTRY_BLOCKLIST support. Boards often emit city-only locations ("Pune",
+# "Bengaluru East, Karnataka") so each banned country also matches the city and
+# state names that commonly appear in postings from there.
+COUNTRY_ALIASES: dict[str, list[str]] = {
+    "india": [
+        "mumbai", "bengaluru", "bangalore", "delhi", "new delhi", "hyderabad",
+        "chennai", "pune", "noida", "gurgaon", "gurugram", "kolkata",
+        "ahmedabad", "jaipur", "indore", "kochi", "chandigarh", "lucknow",
+        "coimbatore", "nagpur", "karnataka", "maharashtra", "tamil nadu",
+        "telangana", "kerala", "gujarat", "rajasthan", "west bengal",
+        "uttar pradesh", "haryana",
+    ],
+    "pakistan": ["karachi", "lahore", "islamabad", "rawalpindi", "faisalabad"],
+    "bangladesh": ["dhaka", "chittagong"],
+    "philippines": ["manila", "cebu", "makati", "taguig", "quezon city"],
+    "china": ["beijing", "shanghai", "shenzhen", "guangzhou", "hangzhou", "chengdu"],
+    "brazil": [
+        "sao paulo", "são paulo", "rio de janeiro", "belo horizonte",
+        "curitiba", "porto alegre", "brasilia", "brasília",
+    ],
+    "nigeria": ["lagos", "abuja"],
+    "egypt": ["cairo", "giza", "alexandria"],
+    "indonesia": ["jakarta", "bandung", "surabaya"],
+    "vietnam": ["hanoi", "ho chi minh", "saigon", "da nang"],
+    "turkey": ["istanbul", "ankara", "izmir", "türkiye", "turkiye"],
+    "united states": ["usa", "u.s.", "united states of america"],
+    "usa": ["united states", "u.s.", "united states of america"],
+    "united kingdom": ["uk", "england", "scotland", "wales", "london"],
+    "uk": ["united kingdom", "england", "scotland", "wales", "london"],
+}
+
+
+def banned_location_matcher(blocklist_csv: str):
+    """Compile COUNTRY_BLOCKLIST into a predicate over location strings, or None
+    if the list is empty. Whole-word matching ("india" doesn't hit "Indiana")
+    plus COUNTRY_ALIASES expansion."""
+    terms = [t.strip().lower() for t in (blocklist_csv or "").split(",") if t.strip()]
+    if not terms:
+        return None
+    expanded: set[str] = set()
+    for t in terms:
+        expanded.add(t)
+        expanded.update(COUNTRY_ALIASES.get(t, []))
+    pattern = re.compile(
+        r"(?<!\w)(?:" + "|".join(re.escape(t) for t in sorted(expanded)) + r")(?!\w)"
+    )
+    return lambda location: bool(pattern.search((location or "").lower()))
+
+
+# Closing block tags / <br> become newlines so paragraphs survive stripping.
+_BLOCK_TAG = re.compile(r"</(?:p|div|li|ul|ol|h[1-6]|tr|table|section|article)>|<br\s*/?>", re.IGNORECASE)
+_LI_OPEN = re.compile(r"<li[^>]*>", re.IGNORECASE)
+
 
 def strip_html(s: str) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", str(s))).strip()
+    """HTML → readable plain text. Some boards (Greenhouse) return the body
+    HTML-escaped (&lt;div&gt;), so unescape BEFORE stripping tags — and again
+    after, for entities that lived inside the markup (&amp;nbsp;). List items
+    keep a "• " marker so the UI can render them as real bullets."""
+    s = _html.unescape(str(s))
+    s = _LI_OPEN.sub("\n• ", s)
+    s = _BLOCK_TAG.sub("\n", s)
+    s = re.sub(r"<[^>]+>", " ", s)
+    s = _html.unescape(s).replace("\xa0", " ")
+    s = re.sub(r"[ \t]+", " ", s)
+    s = re.sub(r" ?\n ?", "\n", s)
+    s = re.sub(r"\n+(?=• )", "\n", s)  # keep bullet runs tight
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    return s.strip()
 
 
 def fetch_remotive(query: str = "") -> list[dict]:

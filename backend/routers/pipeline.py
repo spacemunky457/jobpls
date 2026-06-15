@@ -63,15 +63,29 @@ def discovery_impl(db: Session, user_id: str) -> int:
         "jsearch_key": config.get("JSEARCH_API_KEY", ""),
     }
     new_jobs, new_keys = disc.run_discovery(sources, keywords, seen_keys, secrets)
-    # Country ban list: drop jobs whose location mentions a banned term. Jobs with
-    # no location are kept (can't judge them here; match assessment handles
-    # eligibility). All fetched keys are still marked seen so skips don't recur.
-    banned = [c.strip().lower() for c in config.get("COUNTRY_BLOCKLIST", "").split(",") if c.strip()]
+    # Country ban list: drop jobs whose location matches a banned country (whole
+    # words + city/state aliases). Jobs with no location are kept (can't judge
+    # them here; match assessment handles eligibility). All fetched keys are
+    # still marked seen so skips don't recur.
+    banned = disc.banned_location_matcher(config.get("COUNTRY_BLOCKLIST", ""))
     if banned:
-        new_jobs = [
-            j for j in new_jobs
-            if not any(c in (j.get("location") or "").lower() for c in banned)
-        ]
+        new_jobs = [j for j in new_jobs if not banned(j.get("location"))]
+        # The ban list may have changed since earlier runs: purge already-
+        # discovered jobs that now match, unless the user has acted on them.
+        stale = (
+            db.query(Job)
+            .filter(
+                Job.user_id == user_id,
+                Job.approved == False,  # noqa: E712
+                Job.status.in_(["new", "assessed", "passed", "error"]),
+            )
+            .all()
+        )
+        purged = [job for job in stale if banned(job.location)]
+        for job in purged:
+            db.delete(job)
+        if purged:
+            log.info("Purged %d banned-location jobs for %s", len(purged), user_id)
     for j in new_jobs:
         db.add(Job(
             user_id=user_id,
@@ -132,6 +146,7 @@ def prepare_assessment(
     cv_text = get_default_cv_text(db, current_user.id)
     profile = config.get("PROFILE_BLURB", "")
     preferences = config.get("JOB_PREFERENCES", "")
+    priorities = config.get("TARGET_PRIORITIES", "")
     eligible_types = config.get("ELIGIBLE_TYPES", "global,emea,contractor")
     jobs = (
         db.query(Job)
@@ -143,7 +158,7 @@ def prepare_assessment(
     out = []
     for job in jobs:
         job_dict = {"title": job.title, "company": job.company, "location": job.location, "jd_text": job.jd_text or ""}
-        out.append(PreparedTask(job_id=job.id, prompt=prompts.build_match_prompt(profile, cv_text, preferences, eligible_types, job_dict)))
+        out.append(PreparedTask(job_id=job.id, prompt=prompts.build_match_prompt(profile, cv_text, preferences, eligible_types, job_dict, priorities)))
     return out
 
 
@@ -158,8 +173,10 @@ def ingest_assessments(
         job = db.query(Job).filter(Job.id == item.get("job_id"), Job.user_id == current_user.id).first()
         if not job:
             continue
-        mt.apply_match(job, prompts.parse_match(item.get("raw", "")))
-        done += 1
+        # Empty/unparseable model output leaves the job untouched (still "new")
+        # so the next assess pass retries it instead of parking an empty husk.
+        if mt.apply_match(job, prompts.parse_match(item.get("raw", ""))):
+            done += 1
     db.commit()
     return PipelineResult(success=True, message=f"Assessed {done} jobs", count=done)
 

@@ -8,10 +8,12 @@ export const ELIGIBILITY_CLASS: Record<string, string> = {
 }
 
 // Candidate-match tiers (how well the user's CV fits a role).
-export const TIERS = ['strong', 'possible', 'stretch', 'skip'] as const
+// "perfect" = strong fit AND the role hits the user's target priorities.
+export const TIERS = ['perfect', 'strong', 'possible', 'stretch', 'skip'] as const
 export type Tier = typeof TIERS[number]
 
 export const TIER_META: Record<string, { label: string; class: string }> = {
+  perfect: { label: 'Perfect', class: 'bg-fuchsia-50 text-fuchsia-800 border border-fuchsia-300 ring-1 ring-fuchsia-200' },
   strong: { label: 'Strong', class: 'bg-green-50 text-green-800 border border-green-200' },
   possible: { label: 'Possible', class: 'bg-brand-50 text-brand-700 border border-brand-200' },
   stretch: { label: 'Stretch', class: 'bg-amber-50 text-amber-800 border border-amber-200' },

@@ -15,6 +15,15 @@ log = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    # Runs that were mid-flight when the last process died would otherwise sit
+    # in a non-terminal phase forever and block all future automation cycles.
+    from database import SessionLocal
+    from services.automation import reap_interrupted_runs
+    db = SessionLocal()
+    try:
+        reap_interrupted_runs(db)
+    finally:
+        db.close()
     start_scheduler()
     log.info("Jobpls backend started (auth=%s, db=%s)", settings.AUTH_MODE, "sqlite" if settings.is_sqlite else "postgres")
     yield

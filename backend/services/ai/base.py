@@ -12,8 +12,11 @@ class AIProvider(ABC):
     def chat(self, prompt: str, as_json: bool = False) -> str:
         """Send a prompt and return the response text."""
 
-    def assess_match(self, profile: str, cv_text: str, preferences: str, eligible_types: str, job: dict) -> dict:
-        prompt = prompts.build_match_prompt(profile, cv_text, preferences, eligible_types, job)
+    def assess_match(
+        self, profile: str, cv_text: str, preferences: str, eligible_types: str, job: dict,
+        priorities: str = "",
+    ) -> dict:
+        prompt = prompts.build_match_prompt(profile, cv_text, preferences, eligible_types, job, priorities)
         try:
             return prompts.parse_match(self.chat(prompt, as_json=True))
         except Exception:

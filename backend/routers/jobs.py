@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 from auth import get_current_user
 from database import get_db
-from models import Application, Job, User
-from schemas import ApplicationOut, ApplicationUpdate, JobApprove, JobBatchApprove, JobOut, JobStatusUpdate
+from models import Application, Job, SeenJob, User
+from schemas import ApplicationOut, ApplicationUpdate, JobApprove, JobBatchApprove, JobBatchDelete, JobOut, JobStatusUpdate
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -73,6 +73,29 @@ def set_approval_batch(
     )
     db.commit()
     return {"updated": updated, "approved": body.approved}
+
+
+@router.post("/batch/delete")
+def delete_jobs_batch(
+    body: JobBatchDelete,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete the selected jobs and forget their dedup keys, so a future
+    discovery run can fetch them fresh."""
+    jobs = db.query(Job).filter(Job.id.in_(body.ids), Job.user_id == current_user.id).all()
+    keys = [f"{j.source}|{j.external_id}" for j in jobs]
+    for j in jobs:
+        db.delete(j)
+    seen_cleared = 0
+    if keys:
+        seen_cleared = (
+            db.query(SeenJob)
+            .filter(SeenJob.user_id == current_user.id, SeenJob.key.in_(keys))
+            .delete(synchronize_session=False)
+        )
+    db.commit()
+    return {"deleted": len(jobs), "seen_cleared": seen_cleared}
 
 
 @router.get("/{job_id}", response_model=JobOut)
@@ -154,7 +177,7 @@ def update_application(
 @router.get("/{job_id}/application/download")
 def download_application(
     job_id: int,
-    format: str = Query("pdf"),   # "pdf" (default) | "txt"
+    format: str = Query("pdf"),   # "pdf" (default) | "docx" | "txt"
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -174,6 +197,13 @@ def download_application(
             content=text,
             media_type="text/plain; charset=utf-8",
             headers={"Content-Disposition": f'attachment; filename="CV_{safe}.txt"'},
+        )
+    if format.lower() == "docx":
+        from services.docx_export import cv_text_to_docx
+        return Response(
+            content=cv_text_to_docx(text),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f'attachment; filename="CV_{safe}.docx"'},
         )
     from services.pdf import cv_text_to_pdf
     return Response(

@@ -5,6 +5,8 @@ import { useAuth } from '../../auth/AuthContext'
 import { fetchRequests, fetchStats } from '../../api/client'
 import { PipelineStepper } from '../workflow/PipelineStepper'
 import { PendingInputBanner } from '../workflow/PendingInputBanner'
+import { ActivityBar } from '../workflow/ActivityBar'
+import { ActivityProvider } from '../workflow/ActivityContext'
 import Home from '../../pages/Home'
 import Review from '../../pages/Review'
 import Apply from '../../pages/Apply'
@@ -12,8 +14,9 @@ import Setup from '../../pages/Setup'
 
 /**
  * The floating canvas: the whole app lives in one large centered tile on a quiet
- * backdrop (body), with visible space above and below. Content scrolls INSIDE the
- * canvas; the backdrop never moves. Collapses to full-bleed on small screens.
+ * backdrop (body). The PAGE scrolls (native browser scrollbar — no inner scroll
+ * container); the header + stepper band stays sticky at the top. Collapses to
+ * full-bleed on small screens.
  */
 export function MainFlowShell() {
   const { user, logout } = useAuth()
@@ -21,9 +24,11 @@ export function MainFlowShell() {
   const { data: requests = [] } = useQuery({ queryKey: ['requests'], queryFn: fetchRequests })
 
   return (
+    <ActivityProvider>
     <div className="min-h-dvh sm:px-4 sm:py-4 lg:px-6 lg:py-6">
-      <div className="mx-auto flex h-dvh max-w-7xl flex-col overflow-hidden bg-white shadow-pop ring-1 ring-ink/5 sm:h-[calc(100dvh-2rem)] sm:rounded-3xl lg:h-[calc(100dvh-3rem)]">
-        <header className="shrink-0 border-b border-line bg-white">
+      <div className="mx-auto flex min-h-dvh max-w-7xl flex-col bg-white shadow-pop ring-1 ring-ink/5 sm:min-h-[calc(100dvh-2rem)] sm:rounded-3xl lg:min-h-[calc(100dvh-3rem)]">
+        <div className="sticky top-0 z-20 bg-white sm:rounded-t-3xl">
+        <header className="border-b border-line bg-white sm:rounded-t-3xl">
           <div className="flex w-full items-center justify-between gap-4 px-4 py-2.5 sm:px-6">
             <Link to="/" className="flex items-center gap-2 font-semibold text-ink">
               <span className="grid h-6 w-6 place-items-center rounded-lg bg-brand-600 text-xs font-bold text-white shadow-tile">J</span>
@@ -56,8 +61,10 @@ export function MainFlowShell() {
         </header>
 
         <PipelineStepper stats={stats} />
+        <ActivityBar />
+        </div>
 
-        <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+        <main className="flex-1 px-4 py-6 sm:px-6">
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/review" element={<Review />} />
@@ -75,5 +82,6 @@ export function MainFlowShell() {
         </main>
       </div>
     </div>
+    </ActivityProvider>
   )
 }

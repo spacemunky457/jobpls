@@ -91,17 +91,21 @@ export const setApprovalBatch = (ids: number[], approved: boolean) =>
 export const setStatus = (id: number, status: string) =>
   api.patch(`/jobs/${id}/status`, { status }).then((r) => r.data)
 export const deleteJob = (id: number) => api.delete(`/jobs/${id}`)
+// Deleting also clears the jobs' dedup keys, so a future discovery run can
+// fetch them fresh.
+export const deleteJobsBatch = (ids: number[]) =>
+  api.post<{ deleted: number; seen_cleared: number }>('/jobs/batch/delete', { ids }).then((r) => r.data)
 export const fetchApplication = (jobId: number) =>
   api.get<Application>(`/jobs/${jobId}/application`).then((r) => r.data)
 export const updateApplication = (jobId: number, body: Partial<Application>) =>
   api.put<Application>(`/jobs/${jobId}/application`, body).then((r) => r.data)
 // Fetch the CV through axios so the bearer token is attached, then trigger a
 // client-side download. A plain <a href> would navigate without the JWT → 401.
-export const downloadApplication = async (jobId: number) => {
-  const res = await api.get(`/jobs/${jobId}/application/download`, { responseType: 'blob' })
+export const downloadApplication = async (jobId: number, format: 'pdf' | 'docx' | 'txt' = 'pdf') => {
+  const res = await api.get(`/jobs/${jobId}/application/download`, { params: { format }, responseType: 'blob' })
   const cd: string = res.headers['content-disposition'] || ''
   const match = /filename="?([^"]+)"?/.exec(cd)
-  const filename = match ? match[1] : `CV_${jobId}.txt`
+  const filename = match ? match[1] : `CV_${jobId}.${format}`
   const url = URL.createObjectURL(res.data as Blob)
   const a = document.createElement('a')
   a.href = url
