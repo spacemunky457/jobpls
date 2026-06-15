@@ -134,7 +134,6 @@ def send_digest(db: Session, user: User, config: dict | None = None,
         return 0
 
     min_rank = TIER_RANK.get((config.get("DIGEST_MIN_TIER", "possible") or "possible").lower(), 2)
-    eligible = {t.strip() for t in (config.get("ELIGIBLE_TYPES", "global,emea,contractor")).split(",") if t.strip()}
 
     # Determine the "new since" cutoff.
     since_dt = None
@@ -150,16 +149,14 @@ def send_digest(db: Session, user: User, config: dict | None = None,
     elif since_hours:
         since_dt = datetime.utcnow() - timedelta(hours=since_hours)
 
-    def eligible_ok(j: Job) -> bool:
-        el = (j.eligibility or "")
-        return (not eligible) or el in eligible or el in ("", "unclear")
-
+    # Eligibility is informational only — the tier (skills/experience fit) decides
+    # what's digested. Work-rights are still shown per job so the user can judge.
     q = db.query(Job).filter(Job.user_id == user.id, Job.status == "assessed")
     if since_dt:
         q = q.filter(Job.added_at > since_dt)
     matches = [
         j for j in q.order_by(Job.match.desc()).all()
-        if TIER_RANK.get((j.tier or "").lower(), 0) >= min_rank and eligible_ok(j)
+        if TIER_RANK.get((j.tier or "").lower(), 0) >= min_rank
     ]
 
     if matches:

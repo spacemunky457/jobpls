@@ -46,7 +46,7 @@ def build_match_prompt(
         "            get an interview. Reserve this for genuinely competitive applications.\n"
         "  possible = meets most core requirements with 1-2 real gaps; a sensible application.\n"
         "  stretch = meaningful overlap but missing several key requirements, or a seniority mismatch.\n"
-        "  skip    = wrong field, hard eligibility blocker, or under ~30% requirement overlap.\n\n"
+        "  skip    = wrong field, or under ~30% requirement overlap.\n\n"
         + (
             "CANDIDATE TARGET PRIORITIES — the niches this candidate is specifically hunting for. "
             "A role matching one or more of these AND the candidate's qualifications should be tiered "
@@ -62,8 +62,10 @@ def build_match_prompt(
         "  us-only = US/North America only; needs-right-to-work = requires existing right to work;\n"
         "  unclear = not specified. Look for location restrictions anywhere in the posting (benefits,\n"
         "  legal boilerplate, timezone requirements), not just the location field.\n"
-        f"Treat the role as eligible only if the type is in: {eligible_types or 'global,emea,contractor'}\n"
-        "A hard eligibility blocker caps the tier at skip regardless of skills overlap.\n\n"
+        f"For reference, the candidate's accepted work-eligibility types are: {eligible_types or 'global,emea,contractor'}\n"
+        "Classify the eligibility type accurately so the candidate knows the work-rights situation, but "
+        "do NOT lower the tier for eligibility — tier the candidate on skills/experience overlap ALONE. "
+        "The candidate decides for themselves whether to pursue a role needing relocation or sponsorship.\n\n"
         "CANDIDATE PROFILE:\n" + (profile or "(none)") + "\n\n"
         + ("CANDIDATE CV:\n" + cv_text[:3000] + "\n\n" if cv_text else "")
         + ("CANDIDATE PREFERENCES / NUANCES:\n" + preferences + "\n\n" if preferences else "")
