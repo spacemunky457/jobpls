@@ -1,0 +1,31 @@
+name: Job Agent
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
+  workflow_dispatch:          # also triggerable manually from the Actions tab
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run agent
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # AI keys and email keys are stored per-user in the DB (Settings → AI / Email).
+          # No other secrets needed here unless you want system-level fallbacks.
+        run: python run_agent.py
