@@ -1,0 +1,74 @@
+## Render deployment config
+## Fill in the sync:false values in the Render dashboard → Environment.
+## See backend/.env.example for detailed notes on each var.
+
+services:
+  # ── Backend (FastAPI) ──────────────────────────────────────────────────────
+  - type: web
+    name: jobpls-backend
+    runtime: python
+    region: oregon
+    plan: starter        # free tier spins down; use starter for the always-on scheduler
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: alembic upgrade head && python -m uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      # Supabase Postgres connection string — get from Supabase dashboard → Project Settings → Database
+      - key: DATABASE_URL
+        sync: false      # set in Render dashboard: postgresql+psycopg://postgres:[PW]@db.[PROJECT].supabase.co:5432/postgres
+
+      # Auth
+      - key: AUTH_MODE
+        value: supabase
+      # Set ONE of these from Supabase dashboard → Project Settings → API → JWT Secret
+      - key: SUPABASE_JWT_SECRET
+        sync: false      # simpler: paste the "JWT Secret" value here
+      # - key: SUPABASE_JWKS_URL
+      #   value: https://[PROJECT].supabase.co/auth/v1/.well-known/jwks.json
+
+      # CORS — set to your frontend Render URL (and any custom domain)
+      - key: ALLOWED_ORIGINS
+        sync: false      # e.g. https://jobpls-frontend.onrender.com,https://app.yourdomain.com
+
+      # Magic-link base URL — set to your frontend URL
+      - key: APP_BASE_URL
+        sync: false      # e.g. https://jobpls-frontend.onrender.com
+
+      # Email — use resend (free 3k/mo) or smtp
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: "Jobpls <hello@yourdomain.com>"
+
+      # Optional: managed Claude key for the premium AI tier
+      # - key: MANAGED_CLAUDE_API_KEY
+      #   sync: false
+
+      # Python version
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+
+  # ── Frontend (Vite static site) ────────────────────────────────────────────
+  - type: web
+    name: jobpls-frontend
+    runtime: static
+    region: oregon
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      # Backend URL — set to your jobpls-backend Render URL
+      - key: VITE_API_URL
+        sync: false      # e.g. https://jobpls-backend.onrender.com
+
+      # Supabase — get from Supabase dashboard → Project Settings → API
+      - key: VITE_SUPABASE_URL
+        sync: false      # e.g. https://abcdefgh.supabase.co
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false      # the "anon public" key

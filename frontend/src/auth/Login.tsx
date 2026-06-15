@@ -4,9 +4,10 @@ import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Alert } from '../components/ui/Alert'
+import { supabase } from '../lib/supabase'
 
 export default function Login() {
-  const { login, signup } = useAuth()
+  const { login, signup, confirmationSent } = useAuth()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -20,11 +21,29 @@ export default function Login() {
       if (mode === 'login') await login(email, password)
       else await signup(email, password)
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setError(detail || 'Something went wrong')
+      const msg = err instanceof Error
+        ? err.message
+        : (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setError(msg || 'Something went wrong')
     } finally {
       setBusy(false)
     }
+  }
+
+  if (confirmationSent) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-white to-brand-50/50 p-4">
+        <div className="w-full max-w-sm text-center">
+          <span className="mb-3 inline-grid h-12 w-12 place-items-center rounded-2xl bg-brand-600 text-lg font-bold text-white shadow-tile-hover">
+            J
+          </span>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">Check your email</h1>
+          <p className="mt-2 text-sm text-ink-muted">
+            We sent a confirmation link to <strong>{email}</strong>. Click it to activate your account, then come back here to log in.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -63,7 +82,13 @@ export default function Login() {
             </div>
             <div>
               <label className="label">Password</label>
-              <Input type="password" placeholder="At least 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} required />
+              <Input
+                type="password"
+                placeholder={supabase ? 'At least 6 characters' : 'At least 8 characters'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
             </div>
             {error && <Alert variant="error">{error}</Alert>}
             <Button variant="primary" className="w-full" disabled={busy}>
