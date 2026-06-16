@@ -319,7 +319,7 @@ function StepEngine() {
       return saveConfig({
         AI_PROVIDER: effectiveProvider,
         GEMINI_API_KEY: geminiKey ?? cfg?.GEMINI_API_KEY ?? '',
-        GEMINI_MODEL: geminiModel ?? cfg?.GEMINI_MODEL ?? 'gemini-2.5-flash',
+        GEMINI_MODEL: geminiModel ?? cfg?.GEMINI_MODEL ?? 'gemini-3.5-flash',
         CLAUDE_API_KEY: claudeKey ?? cfg?.CLAUDE_API_KEY ?? '',
         OLLAMA_MODEL: model,
         OLLAMA_BASE_URL: baseUrl,
@@ -337,7 +337,7 @@ function StepEngine() {
     mutationFn: () => testAIKey(
       current,
       current === 'gemini_byok' ? (geminiKey ?? cfg?.GEMINI_API_KEY ?? '') : (claudeKey ?? cfg?.CLAUDE_API_KEY ?? ''),
-      current === 'gemini_byok' ? (geminiModel ?? cfg?.GEMINI_MODEL ?? 'gemini-2.5-flash') : (cfg?.CLAUDE_MODEL ?? ''),
+      current === 'gemini_byok' ? (geminiModel ?? cfg?.GEMINI_MODEL ?? 'gemini-3.5-flash') : (cfg?.CLAUDE_MODEL ?? ''),
     ),
     onSuccess: (r) => setTest(r.ok ? `✓ ${r.message}` : `✗ ${r.message}`),
     onError: () => setTest('✗ Test failed — is the backend running?'),
@@ -400,12 +400,8 @@ function StepEngine() {
             <Field label="Gemini API key">
               <Input type="password" value={geminiKey ?? cfg?.GEMINI_API_KEY ?? ''} onChange={(e) => setGeminiKey(e.target.value)} placeholder="AIza…" />
             </Field>
-            <Field label="Model">
-              <Select value={geminiModel ?? cfg?.GEMINI_MODEL ?? 'gemini-2.5-flash'} onChange={(e) => setGeminiModel(e.target.value)}>
-                <option value="gemini-2.5-flash">gemini-2.5-flash (recommended)</option>
-                <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-                <option value="gemini-2.5-pro">gemini-2.5-pro (slower, stricter limits)</option>
-              </Select>
+            <Field label="Model" hint="Exact AI Studio model ID. Newest first: gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-pro, gemini-2.5-flash.">
+              <Input value={geminiModel ?? cfg?.GEMINI_MODEL ?? 'gemini-3.5-flash'} onChange={(e) => setGeminiModel(e.target.value)} placeholder="gemini-3.5-flash" />
             </Field>
           </div>
           <Button onClick={() => { setTest('Testing…'); testServer.mutate() }} disabled={testServer.isPending}>

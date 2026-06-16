@@ -32,7 +32,7 @@ def get_provider(config: dict):
         from services.ai.gemini_provider import GeminiProvider
         return GeminiProvider(
             api_key=config.get("GEMINI_API_KEY", ""),
-            model=config.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            model=config.get("GEMINI_MODEL", "gemini-3.5-flash"),
         )
     if provider_type == "claude_byok":
         from services.ai.claude_provider import ClaudeProvider

@@ -9,7 +9,7 @@ DEFAULT_CONFIG = {
     "OLLAMA_MODEL": "llama3.2",
     "OLLAMA_BASE_URL": "http://localhost:11434",
     "GEMINI_API_KEY": "",
-    "GEMINI_MODEL": "gemini-2.5-flash",
+    "GEMINI_MODEL": "gemini-3.5-flash",
     "CLAUDE_API_KEY": "",
     "CLAUDE_MODEL": "claude-haiku-4-5-20251001",
     "MIN_SCORE": "60",
@@ -65,7 +65,19 @@ DEFAULT_SOURCES = [
     ("themuse", ""),
     ("linkedin", "quality assurance automation"),
     ("linkedin", "customer success remote"),
+    # Verified remote-friendly Greenhouse company boards (no API key, no quota —
+    # each returns the company's full board; we title-filter locally). Slugs checked
+    # live against boards-api.greenhouse.io. remotecom = Remote.com.
     ("greenhouse", "gitlab"),
+    ("greenhouse", "remotecom"),
+    ("greenhouse", "stripe"),
+    ("greenhouse", "dropbox"),
+    ("greenhouse", "coinbase"),
+    ("greenhouse", "databricks"),
+    ("greenhouse", "cloudflare"),
+    ("greenhouse", "brex"),
+    ("greenhouse", "gusto"),
+    ("greenhouse", "airbnb"),
     ("kariyer", ""),
     ("yenibiris", ""),
     ("lever", ""),
