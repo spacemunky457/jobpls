@@ -19,14 +19,20 @@ Base.metadata.create_all(bind=engine)
 
 from models import Run, User
 from routers.config import get_config_dict
-from services.automation import is_running, run_cycle
+from services.automation import is_running, reap_interrupted_runs, run_cycle
 
 
 def main() -> None:
     db = SessionLocal()
     try:
+        # A cycle left non-terminal by a killed in-process worker (e.g. the Render
+        # free tier sleeping mid-run) would otherwise make is_running() skip the
+        # user for up to STALE_RUN_HOURS, silently blocking this cron. The cron is
+        # an independent process, so any unfinished run is dead by definition here —
+        # reap them before deciding who's due.
+        reaped = reap_interrupted_runs(db)
         users = db.query(User).all()
-        log.info("Agent started — %d user(s) in DB", len(users))
+        log.info("Agent started — %d user(s) in DB (reaped %d stale run(s))", len(users), reaped)
         for user in users:
             config = get_config_dict(db, user.id)
             if config.get("AUTOMATION_ENABLED", "false") != "true":
