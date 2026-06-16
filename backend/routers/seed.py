@@ -56,20 +56,31 @@ DEFAULT_SOURCES = [
     ("remotive", "quality assurance"),
     ("remotive", "automation"),
     ("remotive", "customer support"),
+    ("remotive", "customer success"),
+    ("remotive", "implementation"),
     ("remoteok", ""),
     ("wwr", ""),
     ("workingnomads", ""),
     ("arbeitnow", ""),
     ("themuse", ""),
     ("linkedin", "quality assurance automation"),
+    ("linkedin", "customer success remote"),
     ("greenhouse", "gitlab"),
     ("kariyer", ""),
     ("yenibiris", ""),
     ("lever", ""),
     ("ashby", ""),
-    # Keyed aggregators (reach Indeed/LinkedIn/Glassdoor) — add keys in Settings to enable:
+    # Keyed aggregators (reach Indeed/LinkedIn/Glassdoor) — add keys in Settings to enable.
+    # NOTE: JSearch free tier is quota-limited (~200-500 req/month). Each query below is
+    # one API call per discovery cycle, so keep the jsearch list short or widen the
+    # discovery interval. Adzuna's free tier is far more generous — lean on it for volume.
     ("jsearch", "quality assurance automation"),
+    ("jsearch", "customer success manager remote"),
+    ("jsearch", "implementation specialist remote"),
     ("adzuna", "quality assurance"),
+    ("adzuna", "customer success"),
+    ("adzuna", "implementation specialist"),
+    ("adzuna", "solutions engineer"),
 ]
 
 
