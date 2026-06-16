@@ -400,8 +400,14 @@ function StepEngine() {
             <Field label="Gemini API key">
               <Input type="password" value={geminiKey ?? cfg?.GEMINI_API_KEY ?? ''} onChange={(e) => setGeminiKey(e.target.value)} placeholder="AIza…" />
             </Field>
-            <Field label="Model" hint="Exact AI Studio model ID. Newest first: gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-pro, gemini-2.5-flash.">
-              <Input value={geminiModel ?? cfg?.GEMINI_MODEL ?? 'gemini-3.5-flash'} onChange={(e) => setGeminiModel(e.target.value)} placeholder="gemini-3.5-flash" />
+            <Field label="Model" hint="Pick one, or type any AI Studio model ID (newer models work without an app update).">
+              <Input list="gemini-models" value={geminiModel ?? cfg?.GEMINI_MODEL ?? 'gemini-3.5-flash'} onChange={(e) => setGeminiModel(e.target.value)} placeholder="gemini-3.5-flash" />
+              <datalist id="gemini-models">
+                <option value="gemini-3.5-flash" />
+                <option value="gemini-3.1-pro-preview" />
+                <option value="gemini-2.5-pro" />
+                <option value="gemini-2.5-flash" />
+              </datalist>
             </Field>
           </div>
           <Button onClick={() => { setTest('Testing…'); testServer.mutate() }} disabled={testServer.isPending}>
