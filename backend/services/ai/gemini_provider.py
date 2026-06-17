@@ -47,6 +47,15 @@ class GeminiProvider(AIProvider):
             # Native JSON mode: the model is constrained to emit valid JSON,
             # which makes parse_json_loose's job trivial.
             gen_config["responseMimeType"] = "application/json"
+        # Gemini 2.5+/3.x are "thinking" models: on large prompts (full CV + JD)
+        # they spend the entire output-token budget on internal reasoning and emit
+        # NO visible text — which surfaced as "Empty assessment" errors and, via the
+        # empty-response retries below, multiplied rate-limit (429) pressure 4x.
+        # Disabling thinking sends every token to the answer. (2.0 models lack this
+        # field; gating by version keeps them working.)
+        m = self.model.lower()
+        if "2.5" in m or m.startswith("gemini-3"):
+            gen_config["thinkingConfig"] = {"thinkingBudget": 0}
         body = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": gen_config,

@@ -84,7 +84,14 @@ def match_batch(
         try:
             result = provider.assess_match(profile, cv_text, preferences, eligible_types, job_dict, priorities)
         except Exception as e:
+            msg = str(e)
             log.error("Match assessment failed for job %s: %s", job.id, e)
+            # A free-tier rate limit is transient — don't burn the job to "error"
+            # (which never retries). Leave it "new" and stop the batch so the next
+            # cycle picks up where we left off instead of hammering a throttled API.
+            if "rate limit" in msg.lower() or "429" in msg:
+                log.warning("Rate limited — stopping batch; remaining jobs stay 'new' for next cycle")
+                break
             job.status = f"error:{str(e)[:60]}"
             db.commit()
             done += 1
