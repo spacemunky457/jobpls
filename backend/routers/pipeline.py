@@ -86,6 +86,26 @@ def discovery_impl(db: Session, user_id: str) -> int:
             db.delete(job)
         if purged:
             log.info("Purged %d banned-location jobs for %s", len(purged), user_id)
+    # Collapse duplicate listings: the same role is often posted under several IDs
+    # or once per region (e.g. one CSM role listed for multiple locations), which the
+    # source|id dedup misses. Keep one per (company, normalized title), checking both
+    # already-stored jobs and earlier entries in this batch. new_keys is still marked
+    # seen below, so the dropped duplicates won't be re-fetched next cycle.
+    seen_pairs = {
+        ((c or "").strip().lower(), (t or "").strip().lower())
+        for c, t in db.query(Job.company, Job.title).filter(Job.user_id == user_id).all()
+    }
+    unique_jobs = []
+    for j in new_jobs:
+        company = (j.get("company") or "").strip().lower()
+        title = (j.get("title") or "").strip().lower()
+        if company and title:
+            if (company, title) in seen_pairs:
+                continue
+            seen_pairs.add((company, title))
+        unique_jobs.append(j)
+    new_jobs = unique_jobs
+
     for j in new_jobs:
         db.add(Job(
             user_id=user_id,
