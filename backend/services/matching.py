@@ -7,6 +7,11 @@ log = logging.getLogger(__name__)
 
 TIERS = ("perfect", "strong", "possible", "stretch", "skip")
 
+# Below this many chars a job has effectively no description (some sources — e.g.
+# the LinkedIn guest endpoint and Kariyer — return listings with an empty body).
+# There's nothing to assess fit against, so we skip the API call entirely.
+MIN_JD_CHARS = 40
+
 
 def _clamp(val) -> int | None:
     try:
@@ -75,6 +80,19 @@ def match_batch(
     )
     done = 0
     for job in jobs:
+        if len((job.jd_text or "").strip()) < MIN_JD_CHARS:
+            # No usable description — don't burn an API call (or quota) on a job the
+            # model can't assess; mark a clear skip instead of "error:empty AI response".
+            job.match = None
+            job.tier = "skip"
+            job.eligibility = "unclear"
+            job.verdict = "No job description available to assess — the listing has no body text."
+            job.strengths = ""
+            job.gaps = ""
+            job.status = "assessed"
+            db.commit()
+            done += 1
+            continue
         job_dict = {
             "title": job.title,
             "company": job.company,
