@@ -132,8 +132,14 @@ def run_cycle(user_id: str, run_id: int) -> None:
         provider = None
         try:
             provider = get_provider(config)
-        except Exception:
-            pass
+        except Exception as e:
+            # Silent skip here was a debugging black hole: jobs pile up at "new" with
+            # no clue why. Log the actual reason so the cron output is diagnosable
+            # (e.g. AI_PROVIDER=ollama_browser, or a missing/empty Gemini key).
+            log.warning(
+                "Assessment skipped for %s — no server-side AI provider (AI_PROVIDER=%s): %s",
+                user_id, config.get("AI_PROVIDER", "?"), e,
+            )
         if provider:
             run.phase = "assessing"
             db.commit()
