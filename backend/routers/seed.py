@@ -9,7 +9,7 @@ DEFAULT_CONFIG = {
     "OLLAMA_MODEL": "llama3.2",
     "OLLAMA_BASE_URL": "http://localhost:11434",
     "GEMINI_API_KEY": "",
-    "GEMINI_MODEL": "gemini-3.5-flash",
+    "GEMINI_MODEL": "gemini-2.5-flash",
     "CLAUDE_API_KEY": "",
     "CLAUDE_MODEL": "claude-haiku-4-5-20251001",
     "MIN_SCORE": "60",

@@ -319,7 +319,7 @@ function StepEngine() {
       return saveConfig({
         AI_PROVIDER: effectiveProvider,
         GEMINI_API_KEY: geminiKey ?? cfg?.GEMINI_API_KEY ?? '',
-        GEMINI_MODEL: geminiModel ?? cfg?.GEMINI_MODEL ?? 'gemini-3.5-flash',
+        GEMINI_MODEL: geminiModel ?? cfg?.GEMINI_MODEL ?? 'gemini-2.5-flash',
         CLAUDE_API_KEY: claudeKey ?? cfg?.CLAUDE_API_KEY ?? '',
         OLLAMA_MODEL: model,
         OLLAMA_BASE_URL: baseUrl,
@@ -337,7 +337,7 @@ function StepEngine() {
     mutationFn: () => testAIKey(
       current,
       current === 'gemini_byok' ? (geminiKey ?? cfg?.GEMINI_API_KEY ?? '') : (claudeKey ?? cfg?.CLAUDE_API_KEY ?? ''),
-      current === 'gemini_byok' ? (geminiModel ?? cfg?.GEMINI_MODEL ?? 'gemini-3.5-flash') : (cfg?.CLAUDE_MODEL ?? ''),
+      current === 'gemini_byok' ? (geminiModel ?? cfg?.GEMINI_MODEL ?? 'gemini-2.5-flash') : (cfg?.CLAUDE_MODEL ?? ''),
     ),
     onSuccess: (r) => setTest(r.ok ? `✓ ${r.message}` : `✗ ${r.message}`),
     onError: () => setTest('✗ Test failed — is the backend running?'),
@@ -400,13 +400,13 @@ function StepEngine() {
             <Field label="Gemini API key">
               <Input type="password" value={geminiKey ?? cfg?.GEMINI_API_KEY ?? ''} onChange={(e) => setGeminiKey(e.target.value)} placeholder="AIza…" />
             </Field>
-            <Field label="Model" hint="Pick one, or type any AI Studio model ID (newer models work without an app update).">
-              <Input list="gemini-models" value={geminiModel ?? cfg?.GEMINI_MODEL ?? 'gemini-3.5-flash'} onChange={(e) => setGeminiModel(e.target.value)} placeholder="gemini-3.5-flash" />
+            <Field label="Model" hint="gemini-2.5-flash recommended — reliable JSON on the free tier. The 3.x 'thinking' models can return empty assessments and have tighter limits. You can type any model ID.">
+              <Input list="gemini-models" value={geminiModel ?? cfg?.GEMINI_MODEL ?? 'gemini-2.5-flash'} onChange={(e) => setGeminiModel(e.target.value)} placeholder="gemini-2.5-flash" />
               <datalist id="gemini-models">
+                <option value="gemini-2.5-flash" />
+                <option value="gemini-2.5-pro" />
                 <option value="gemini-3.5-flash" />
                 <option value="gemini-3.1-pro-preview" />
-                <option value="gemini-2.5-pro" />
-                <option value="gemini-2.5-flash" />
               </datalist>
             </Field>
           </div>
